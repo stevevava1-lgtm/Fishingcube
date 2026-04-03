@@ -141,12 +141,12 @@ function redeemCodeExact(code) {
     equippedRodId = ownedRods.has("rod67") ? "rod67" : "beginnerRod";
     for (let i = 0; i < 5; i++) {
       inventory[i] = {
-        ...ITEMS.electricalEel,
+        ...ITEMS.minnow,
         uid: newUid(),
-        weightG: rollFishWeightG("electricalEel"),
+        weightG: rollFishWeightG("minnow"),
         gold: false,
         forestMut: false,
-        lightningMut: false,
+        lightningMut: true,
         foolsMut: false,
         hackedMut: false,
       };
