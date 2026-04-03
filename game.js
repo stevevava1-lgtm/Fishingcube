@@ -124,6 +124,54 @@ for (const b of tabButtons) {
 }
 
 function redeemCodeExact(code) {
+  if (code === "Restore_save") {
+    sanitizeStorage();
+    restoreSaveUndoSnapshot = captureRestoreSnapshot();
+    for (let i = 0; i < SLOT_COUNT; i++) inventory[i] = null;
+    for (let i = 0; i < BACKPACK_SIZE; i++) backpack[i] = null;
+    for (let i = 0; i < FAVORITES_SIZE; i++) favorites[i] = null;
+    money = 25568;
+    ownedBoat = true;
+    ownedRods.clear();
+    for (const rid of ROD_IDS) {
+      if (rid !== "sharkRod") ownedRods.add(rid);
+    }
+    rodEnchants = { rod67: "speed" };
+    held = { kind: "rod", uid: null };
+    equippedRodId = ownedRods.has("rod67") ? "rod67" : "beginnerRod";
+    for (let i = 0; i < 5; i++) {
+      inventory[i] = {
+        ...ITEMS.electricalEel,
+        uid: newUid(),
+        weightG: rollFishWeightG("electricalEel"),
+        gold: false,
+        forestMut: false,
+        lightningMut: false,
+        foolsMut: false,
+        hackedMut: false,
+      };
+    }
+    updateMoneyHud();
+    renderInventory();
+    renderBackpackGrid();
+    renderRodSlot();
+    renderRods();
+    saveGame();
+    return { ok: true, msg: "Restore applied. Use Undo_restore to revert." };
+  }
+  if (code === "Undo_restore") {
+    if (!restoreSaveUndoSnapshot) return { ok: false, msg: "Nothing to undo." };
+    applyRestoreSnapshot(restoreSaveUndoSnapshot);
+    restoreSaveUndoSnapshot = null;
+    updateMoneyHud();
+    renderInventory();
+    renderBackpackGrid();
+    renderRodSlot();
+    renderRods();
+    saveGame();
+    return { ok: true, msg: "Previous account restored." };
+  }
+
   if (redeemedCodes.has(code)) return { ok: false, msg: "Code already redeemed." };
 
   // Case-sensitive codes. No in-game hints for these.
@@ -945,6 +993,8 @@ const favorites = Array(FAVORITES_SIZE).fill(null);
 
 let money = 0;
 let aprilFoolsTokens = 0;
+/** Full account backup before last Restore_save (for Undo_restore). Persisted in save. */
+let restoreSaveUndoSnapshot = null;
 let lastFishingIslandKind = null;
 let hackedInventoryAnimAcc = 0;
 let backpackOpen = false;
@@ -1230,6 +1280,108 @@ function sanitizeStorage() {
   }
 }
 
+function captureRestoreSnapshot() {
+  sanitizeStorage();
+  return {
+    money,
+    aprilFoolsTokens,
+    inventory: serializeSlots(inventory),
+    backpack: serializeSlots(backpack),
+    favorites: serializeSlots(favorites),
+    caughtFish: { ...caughtFish },
+    player: { x: player.x, y: player.y, fx: player.facing.x, fy: player.facing.y },
+    selectedSlot,
+    equippedRodId,
+    ownedRods: Array.from(ownedRods),
+    held: { ...held },
+    ownedBoat,
+    craftIsland: craftIsland ? { ...craftIsland } : null,
+    garbageRodPity,
+    rodEnchants: { ...rodEnchants },
+    redeemedCodes: Array.from(redeemedCodes),
+  };
+}
+
+function applyRestoreSnapshot(data) {
+  if (!data || typeof data !== "object") return;
+  money = Number(data.money) || 0;
+  aprilFoolsTokens = Math.max(0, Number(data.aprilFoolsTokens) | 0);
+  for (let i = 0; i < SLOT_COUNT; i++) inventory[i] = itemFromStored(data.inventory?.[i]);
+  for (let i = 0; i < BACKPACK_SIZE; i++) backpack[i] = itemFromStored(data.backpack?.[i]);
+  if (Array.isArray(data.favorites)) {
+    for (let i = 0; i < FAVORITES_SIZE; i++) favorites[i] = itemFromStored(data.favorites[i]);
+  } else {
+    for (let i = 0; i < FAVORITES_SIZE; i++) favorites[i] = null;
+  }
+  sanitizeStorage();
+  const cf = data.caughtFish || {};
+  caughtFish.minnow = !!cf.minnow;
+  caughtFish.cod = !!cf.cod;
+  caughtFish.rapFish = !!cf.rapFish;
+  caughtFish.tropical = !!cf.tropical;
+  caughtFish.pufferfish = !!cf.pufferfish;
+  caughtFish.forestFish = !!cf.forestFish;
+  caughtFish.poolShark = !!cf.poolShark;
+  caughtFish.electricalEel = !!cf.electricalEel;
+  caughtFish.forestTurtle = !!cf.forestTurtle;
+  caughtFish.blueTang = !!cf.blueTang;
+  caughtFish.barracuda = !!cf.barracuda;
+  caughtFish.lusca = !!cf.lusca;
+  caughtFish.flyingFish = !!cf.flyingFish;
+  caughtFish.herring = !!cf.herring;
+  caughtFish.metalSheet = !!cf.metalSheet;
+  caughtFish.garbageFish = !!cf.garbageFish;
+  caughtFish.clownfish = !!cf.clownfish;
+  caughtFish.sunTang = !!cf.sunTang;
+  caughtFish.parrotFish = !!cf.parrotFish;
+  caughtFish.reefShark = !!cf.reefShark;
+  caughtFish.foolFish = !!cf.foolFish;
+  caughtFish.gagFish = !!cf.gagFish;
+  caughtFish.shark67 = !!cf.shark67;
+  caughtFish.ghostFish = !!cf.ghostFish;
+  caughtFish.ghostBarracuda = !!cf.ghostBarracuda;
+  caughtFish.anglerfish = !!cf.anglerfish;
+  if (data.player && typeof data.player.x === "number" && typeof data.player.y === "number") {
+    player.x = data.player.x;
+    player.y = data.player.y;
+    player.facing.x = data.player.fx ?? 0;
+    player.facing.y = data.player.fy ?? 1;
+  }
+  selectedSlot = Math.min(SLOT_COUNT - 1, Math.max(0, data.selectedSlot | 0));
+  ownedRods.clear();
+  if (Array.isArray(data.ownedRods)) {
+    for (const rid of data.ownedRods) if (ROD_STATS[rid]) ownedRods.add(rid);
+  }
+  if (ownedRods.size === 0) ownedRods.add("beginnerRod");
+  equippedRodId = ownedRods.has(data.equippedRodId) ? data.equippedRodId : "beginnerRod";
+  held = { kind: data.held?.kind === "item" ? "item" : "rod", uid: typeof data.held?.uid === "string" ? data.held.uid : null };
+  if (held.kind === "item" && held.uid) {
+    const exists =
+      inventory.some((x) => x && x.uid === held.uid) ||
+      backpack.some((x) => x && x.uid === held.uid) ||
+      favorites.some((x) => x && x.uid === held.uid);
+    if (!exists) held = { kind: "rod", uid: null };
+  }
+  redeemedCodes.clear();
+  if (Array.isArray(data.redeemedCodes)) {
+    for (const c of data.redeemedCodes) if (typeof c === "string") redeemedCodes.add(c);
+  }
+  ownedBoat = !!data.ownedBoat;
+  craftIsland =
+    data.craftIsland && typeof data.craftIsland.cx === "number" && typeof data.craftIsland.cy === "number"
+      ? { cx: data.craftIsland.cx, cy: data.craftIsland.cy }
+      : null;
+  garbageRodPity = Math.max(0, (data.garbageRodPity | 0) || 0);
+  rodEnchants = {};
+  if (data.rodEnchants && typeof data.rodEnchants === "object") {
+    for (const k of Object.keys(data.rodEnchants)) {
+      if (ROD_IDS.has(k) && ILLUSION_ENCHANT_TYPES.includes(data.rodEnchants[k])) rodEnchants[k] = data.rodEnchants[k];
+    }
+  }
+  ensureCraftIsland();
+  refreshAprilFoolsIsland();
+}
+
 function saveGame() {
   try {
     sanitizeStorage();
@@ -1258,6 +1410,7 @@ function saveGame() {
         garbageRodPity,
         aprilFoolsTokens,
         rodEnchants: { ...rodEnchants },
+        restoreSaveUndoSnapshot,
       })
     );
   } catch (e) {
@@ -1354,6 +1507,10 @@ function loadGame() {
         if (ROD_IDS.has(k) && ILLUSION_ENCHANT_TYPES.includes(data.rodEnchants[k])) rodEnchants[k] = data.rodEnchants[k];
       }
     }
+    restoreSaveUndoSnapshot =
+      data.restoreSaveUndoSnapshot && typeof data.restoreSaveUndoSnapshot === "object"
+        ? data.restoreSaveUndoSnapshot
+        : null;
     return true;
   } catch (e) {
     return false;
@@ -1407,6 +1564,7 @@ function applyDefaultNewGame() {
   craftIsland = null;
   garbageRodPity = 0;
   rodEnchants = {};
+  restoreSaveUndoSnapshot = null;
   pendingIllusionEnchant = null;
   islands = islands.filter((x) => x.kind !== "craft" && x.kind !== "aprilFools");
   ensureCraftIsland();
