@@ -81,6 +81,9 @@ const codeMessageEl = document.getElementById("code-message");
 const tabButtons = Array.from(document.querySelectorAll("#settings-panel .tab-btn"));
 const tabSettingsEl = document.getElementById("tab-settings");
 const tabCodesEl = document.getElementById("tab-codes");
+const tabSkinsEl = document.getElementById("tab-skins");
+const skinsOptionsEl = document.getElementById("skins-options");
+const CODE_UNLOCK_SKINS = "prereleasepokemon!!!";
 
 const boatStatusEl = document.getElementById("boat-status");
 const buyBoatBtn = document.getElementById("buy-boat-btn");
@@ -342,6 +345,13 @@ function redeemCodeExact(code) {
     renderBackpackGrid();
     saveGame();
     return { ok: true, msg: "Redeemed: 1× Paper. Hold it in-game to read." };
+  }
+  if (code === CODE_UNLOCK_SKINS) {
+    redeemedCodes.add(code);
+    updateSkinsTabVisibility();
+    renderSkinsPanel();
+    saveGame();
+    return { ok: true, msg: "Redeemed: Skins tab unlocked in Settings." };
   }
   return { ok: false, msg: "Invalid code." };
 }
@@ -1183,6 +1193,8 @@ const grandReefTrees = [
 ];
 
 let camera = { x: 0, y: 0 };
+/** "default" | "pokemon_ball" — extra skins unlock via code. */
+let playerSkin = "default";
 const player = {
   x: 0,
   y: -ISLAND_HALF_PX * 0.75,
@@ -1459,6 +1471,36 @@ function drawHackedGlitchWorld(c, cx, cy, scale, uid) {
 
 const redeemedCodes = new Set();
 
+function normalizePlayerSkin(s) {
+  return s === "pokemon_ball" || s === "default" ? s : "default";
+}
+
+function updateSkinsTabVisibility() {
+  const btn = document.getElementById("tab-btn-skins");
+  if (btn) btn.classList.toggle("hidden", !redeemedCodes.has(CODE_UNLOCK_SKINS));
+}
+
+function renderSkinsPanel() {
+  if (!skinsOptionsEl) return;
+  skinsOptionsEl.innerHTML = "";
+  const options = [
+    { id: "default", label: "default" },
+    { id: "pokemon_ball", label: "pokemon_ball" },
+  ];
+  for (const o of options) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "skin-pick-btn" + (playerSkin === o.id ? " active" : "");
+    btn.textContent = o.label;
+    btn.addEventListener("click", () => {
+      playerSkin = o.id;
+      saveGame();
+      renderSkinsPanel();
+    });
+    skinsOptionsEl.appendChild(btn);
+  }
+}
+
 function itemFromStored(entry) {
   if (!entry) return null;
   if (typeof entry === "string") {
@@ -1562,6 +1604,7 @@ function captureRestoreSnapshot() {
     rodEnchants: { ...rodEnchants },
     redeemedCodes: Array.from(redeemedCodes),
     titanInfectedTiles: titanInfectedTiles.map((e) => ({ key: e.key, until: e.until })),
+    playerSkin: normalizePlayerSkin(playerSkin),
   };
 }
 
@@ -1648,8 +1691,10 @@ function applyRestoreSnapshot(data) {
       if (ROD_IDS.has(k) && ILLUSION_ENCHANT_TYPES.includes(data.rodEnchants[k])) rodEnchants[k] = data.rodEnchants[k];
     }
   }
+  playerSkin = normalizePlayerSkin(data.playerSkin);
   ensureCraftIsland();
   refreshAprilFoolsIsland();
+  updateSkinsTabVisibility();
 }
 
 function saveGame() {
@@ -1683,6 +1728,7 @@ function saveGame() {
         rodEnchants: { ...rodEnchants },
         restoreSaveUndoSnapshot,
         titanInfectedTiles: titanInfectedTiles.map((e) => ({ key: e.key, until: e.until })),
+        playerSkin: normalizePlayerSkin(playerSkin),
       })
     );
   } catch (e) {
@@ -1772,6 +1818,7 @@ function loadGame() {
     if (Array.isArray(data.redeemedCodes)) {
       for (const c of data.redeemedCodes) if (typeof c === "string") redeemedCodes.add(c);
     }
+    playerSkin = normalizePlayerSkin(data.playerSkin);
     ownedBoat = !!data.ownedBoat;
     craftIsland =
       data.craftIsland && typeof data.craftIsland.cx === "number" && typeof data.craftIsland.cy === "number"
@@ -1851,6 +1898,7 @@ function applyDefaultNewGame() {
   garbageRodPity = 0;
   rodEnchants = {};
   restoreSaveUndoSnapshot = null;
+  playerSkin = "default";
   pendingIllusionEnchant = null;
   islands = islands.filter((x) => x.kind !== "craft" && x.kind !== "aprilFools");
   ensureCraftIsland();
@@ -4884,24 +4932,51 @@ function drawPlayerSquare(px, py, half, fx, fy) {
   ctx.save();
   ctx.translate(px, py);
   ctx.rotate(ang);
-  ctx.fillStyle = "#5dcef5";
-  ctx.strokeStyle = "rgba(0,50,80,0.45)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.rect(-half, -half, half * 2, half * 2);
-  ctx.fill();
-  ctx.stroke();
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(-5, -6, 4, 5);
-  ctx.fillRect(2, -6, 4, 5);
-  ctx.fillStyle = "#1a1a1a";
-  ctx.fillRect(-3.5, -4, 2, 2.5);
-  ctx.fillRect(3.5, -4, 2, 2.5);
-  ctx.strokeStyle = "rgba(0,0,0,0.25)";
-  ctx.beginPath();
-  ctx.moveTo(-4, 5);
-  ctx.quadraticCurveTo(0, 8, 4, 5);
-  ctx.stroke();
+  if (playerSkin === "pokemon_ball") {
+    ctx.fillStyle = "#c62828";
+    ctx.fillRect(-half, -half, half * 2, half);
+    ctx.fillStyle = "#f5f5f5";
+    ctx.fillRect(-half, 0, half * 2, half);
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-half, 0);
+    ctx.lineTo(half, 0);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(0,50,80,0.45)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-half, -half, half * 2, half * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(-5, -6, 4, 5);
+    ctx.fillRect(2, -6, 4, 5);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(-3.5, -4, 2, 2.5);
+    ctx.fillRect(3.5, -4, 2, 2.5);
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath();
+    ctx.moveTo(-4, 5);
+    ctx.quadraticCurveTo(0, 8, 4, 5);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = "#5dcef5";
+    ctx.strokeStyle = "rgba(0,50,80,0.45)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(-half, -half, half * 2, half * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(-5, -6, 4, 5);
+    ctx.fillRect(2, -6, 4, 5);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(-3.5, -4, 2, 2.5);
+    ctx.fillRect(3.5, -4, 2, 2.5);
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
+    ctx.beginPath();
+    ctx.moveTo(-4, 5);
+    ctx.quadraticCurveTo(0, 8, 4, 5);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -5914,18 +5989,24 @@ function openRodsPanel() {
 function openSettingsPanel(tab) {
   closeAllUiPanels();
   settingsPanel.classList.remove("hidden");
-  setSettingsTab(tab || "settings");
+  let t = tab || "settings";
+  if (t === "skins" && !redeemedCodes.has(CODE_UNLOCK_SKINS)) t = "settings";
+  setSettingsTab(t);
 }
 
 function setSettingsTab(tab) {
-  for (const b of tabButtons) b.classList.toggle("active", b.getAttribute("data-tab") === tab);
-  tabSettingsEl.classList.toggle("hidden", tab !== "settings");
-  tabCodesEl.classList.toggle("hidden", tab !== "codes");
-  if (tab === "codes") {
+  let t = tab;
+  if (t === "skins" && !redeemedCodes.has(CODE_UNLOCK_SKINS)) t = "settings";
+  for (const b of tabButtons) b.classList.toggle("active", b.getAttribute("data-tab") === t);
+  tabSettingsEl.classList.toggle("hidden", t !== "settings");
+  tabCodesEl.classList.toggle("hidden", t !== "codes");
+  if (tabSkinsEl) tabSkinsEl.classList.toggle("hidden", t !== "skins");
+  if (t === "codes") {
     codeMessageEl.textContent = "";
     codeInputEl.value = "";
     codeInputEl.focus();
   }
+  if (t === "skins") renderSkinsPanel();
 }
 
 function renderRods() {
@@ -7635,6 +7716,7 @@ function drawIslandArrowOverlay() {
 if (!loadGame()) {
   applyDefaultNewGame();
 }
+updateSkinsTabVisibility();
 updateMoneyHud();
 renderInventory();
 renderBackpackGrid();

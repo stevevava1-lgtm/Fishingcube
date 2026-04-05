@@ -45,6 +45,7 @@
       <div class="tabs">
         <button type="button" class="tab-btn active" data-tab="settings">Settings</button>
         <button type="button" class="tab-btn" data-tab="codes">Codes</button>
+        <button type="button" class="tab-btn hidden" id="tab-btn-skins" data-tab="skins">Skins</button>
       </div>
       <div id="tab-settings" class="tab-content">
         <p class="modal-desc">UI panels: use buttons or hotkeys.</p>
@@ -56,6 +57,10 @@
           <button type="button" id="redeem-code-btn">Redeem</button>
         </div>
         <div id="code-message" class="code-message"></div>
+      </div>
+      <div id="tab-skins" class="tab-content hidden">
+        <p class="modal-desc">Player appearance (unlock with a code).</p>
+        <div id="skins-options" class="skins-options"></div>
       </div>
       <button type="button" id="settings-close-btn">Close</button>
     </div>
