@@ -58,6 +58,16 @@ const illusionEnchantPanel = document.getElementById("illusion-enchant-panel");
 const illusionEnchantActionsEl = document.getElementById("illusion-enchant-actions");
 const illusionEnchantDescEl = document.getElementById("illusion-enchant-desc");
 const illusionEnchantCloseBtn = document.getElementById("illusion-enchant-close-btn");
+const ghostCrafterPanel = document.getElementById("ghost-crafter-panel");
+const ghostCrafterRecipesEl = document.getElementById("ghost-crafter-recipes");
+const ghostCrafterCloseBtn = document.getElementById("ghost-crafter-close-btn");
+const relicSellerPanel = document.getElementById("relic-seller-panel");
+const relicSellerOwnedEl = document.getElementById("relic-seller-owned");
+const relicSellStormQtyEl = document.getElementById("relic-sell-storm-qty");
+const relicSellTitanQtyEl = document.getElementById("relic-sell-titan-qty");
+const relicSellTotalEl = document.getElementById("relic-sell-total");
+const relicSellBtn = document.getElementById("relic-sell-btn");
+const relicSellerCloseBtn = document.getElementById("relic-seller-close-btn");
 
 const btnBackpack = document.getElementById("btn-backpack");
 const btnBestiary = document.getElementById("btn-bestiary");
@@ -81,6 +91,7 @@ btnBackpack.addEventListener("click", () => {
   closeAllUiPanels();
   backpackOpen = !backpackOpen;
   backpackPanel.classList.toggle("hidden", !backpackOpen);
+  syncBackpackOpenBodyClass();
   if (backpackOpen) renderBackpackGrid();
 });
 
@@ -236,6 +247,41 @@ function redeemCodeExact(code) {
     saveGame();
     return { ok: true, msg: "Redeemed." };
   }
+  if (code === "R3llics") {
+    let free = 0;
+    for (let i = 0; i < SLOT_COUNT; i++) if (!inventory[i]) free++;
+    for (let i = 0; i < BACKPACK_SIZE; i++) if (!backpack[i]) free++;
+    if (free < 4) return { ok: false, msg: "Need 4 empty slots (hotbar or backpack)." };
+    for (let n = 0; n < 2; n++) {
+      if (!addItem({ ...ITEMS.stormRelic, uid: newUid() })) return { ok: false, msg: "Inventory full." };
+      if (!addItem({ ...ITEMS.titanRelic, uid: newUid() })) return { ok: false, msg: "Inventory full." };
+    }
+    redeemedCodes.add(code);
+    renderInventory();
+    renderBackpackGrid();
+    saveGame();
+    return { ok: true, msg: "Redeemed: 2× Storm relic, 2× Titan relic." };
+  }
+  if (code === "TiTan") {
+    if (!hasAnyInventorySpace() || !addItem({ ...ITEMS.titanRelic, uid: newUid() })) {
+      return { ok: false, msg: "Inventory full." };
+    }
+    redeemedCodes.add(code);
+    renderInventory();
+    renderBackpackGrid();
+    saveGame();
+    return { ok: true, msg: "Redeemed: 1× Titan relic." };
+  }
+  if (code === "Ilovegardengame!") {
+    if (!hasAnyInventorySpace() || !addItem({ ...ITEMS.secretPaper, uid: newUid() })) {
+      return { ok: false, msg: "Inventory full." };
+    }
+    redeemedCodes.add(code);
+    renderInventory();
+    renderBackpackGrid();
+    saveGame();
+    return { ok: true, msg: "Redeemed: 1× Paper. Hold it in-game to read." };
+  }
   return { ok: false, msg: "Invalid code." };
 }
 
@@ -286,6 +332,8 @@ const ITEMS = {
   sharkRod: { id: "sharkRod", name: "Shark rod" },
   rod67: { id: "rod67", name: "67 rod" },
   garbageRod: { id: "garbageRod", name: "Garbage rod" },
+  gunRod: { id: "gunRod", name: "Gun rod" },
+  gunBullets: { id: "gunBullets", name: "Bullets" },
   minnow: { id: "minnow", name: "Minnow" },
   cod: { id: "cod", name: "Cod" },
   rapFish: { id: "rapFish", name: "Rap fish" },
@@ -305,6 +353,7 @@ const ITEMS = {
   herring: { id: "herring", name: "Herring" },
   metalSheet: { id: "metalSheet", name: "Metal sheet" },
   garbageFish: { id: "garbageFish", name: "Garbage fish" },
+  plasticBottle: { id: "plasticBottle", name: "Plastic bottle" },
   clownfish: { id: "clownfish", name: "Clownfish" },
   sunTang: { id: "sunTang", name: "Sun tang" },
   parrotFish: { id: "parrotFish", name: "ParrotFish" },
@@ -315,7 +364,22 @@ const ITEMS = {
   ghostFish: { id: "ghostFish", name: "Ghost fish" },
   ghostBarracuda: { id: "ghostBarracuda", name: "Ghost barracuda" },
   anglerfish: { id: "anglerfish", name: "Anglerfish" },
+  redCrab: { id: "redCrab", name: "Red crab" },
+  titanPrawn: { id: "titanPrawn", name: "Titan prawn" },
+  giantCatShark: { id: "giantCatShark", name: "Giant cat shark" },
+  hyperliosisPoolShark: { id: "hyperliosisPoolShark", name: "Hyperliosis pool shark" },
+  anglerShark: { id: "anglerShark", name: "Angler shark" },
+  stormRelic: { id: "stormRelic", name: "Storm relic" },
+  titanRelic: { id: "titanRelic", name: "Titan relic" },
+  secretPaper: { id: "secretPaper", name: "Paper" },
 };
+
+/** Non-fish items that use per-instance uid (inventory/backpack). Sold only at Illusion Relic Seller. */
+const RELIC_ITEM_IDS = new Set(["stormRelic", "titanRelic"]);
+/** Relics + other unique misc (e.g. code reward paper); not sold at relic NPC. */
+const UID_MISC_ITEM_IDS = new Set([...RELIC_ITEM_IDS, "secretPaper"]);
+const SECRET_PAPER_REVEAL_TEXT = "HD4OCEAN";
+const RELIC_SELL_PRICE = { stormRelic: 400, titanRelic: 550 };
 
 const ROD_IDS = new Set([
   "beginnerRod",
@@ -328,6 +392,7 @@ const ROD_IDS = new Set([
   "sharkRod",
   "rod67",
   "garbageRod",
+  "gunRod",
 ]);
 const FISH_ITEM_IDS = new Set([
   "minnow",
@@ -349,6 +414,7 @@ const FISH_ITEM_IDS = new Set([
   "herring",
   "metalSheet",
   "garbageFish",
+  "plasticBottle",
   "clownfish",
   "sunTang",
   "parrotFish",
@@ -359,6 +425,11 @@ const FISH_ITEM_IDS = new Set([
   "ghostFish",
   "ghostBarracuda",
   "anglerfish",
+  "redCrab",
+  "titanPrawn",
+  "giantCatShark",
+  "hyperliosisPoolShark",
+  "anglerShark",
 ]);
 
 const FISH_WEIGHT_RANGES_G = {
@@ -377,6 +448,7 @@ const FISH_WEIGHT_RANGES_G = {
   herring: [10, 40],
   metalSheet: [50, 1000],
   garbageFish: [10, 40],
+  plasticBottle: [8, 35],
   clownfish: [20, 40],
   sunTang: [70, 90],
   parrotFish: [30, 80],
@@ -387,6 +459,11 @@ const FISH_WEIGHT_RANGES_G = {
   ghostFish: [4, 4],
   ghostBarracuda: [70, 110],
   anglerfish: [30, 40],
+  redCrab: [90, 240],
+  titanPrawn: [120, 240],
+  giantCatShark: [200, 400],
+  hyperliosisPoolShark: [400, 500],
+  anglerShark: [500, 900],
 };
 
 function randIntInclusive(a, b) {
@@ -445,6 +522,8 @@ function fishScaleFromWeight(item) {
   if (item?.id === "lusca") return Math.max(12, w / 100);
   // Metal sheet can get huge.
   if (item?.id === "metalSheet") return Math.max(0.8, w / 100);
+  if (item?.id === "plasticBottle") return Math.max(0.65, Math.min(1.15, w / 45));
+  if (item?.id === "gunBullets") return 1;
   return Math.max(0.6, Math.min(1.8, w / 100));
 }
 
@@ -515,6 +594,12 @@ const ROD_STATS = {
     progressSpeedModifier: -10,
     zoneWidthPercent: 35,
     catchBarFillSeconds: 4.8,
+    price: 0,
+  },
+  gunRod: {
+    progressSpeedModifier: 0,
+    zoneWidthPercent: 30,
+    catchBarFillSeconds: 4.5,
     price: 0,
   },
 };
@@ -766,6 +851,15 @@ const FISH = {
     bestiarySection: "garbage",
     minigameTitle: "Garbage fish — yuck. Keep it in the box!",
   },
+  plasticBottle: {
+    id: "plasticBottle",
+    progressSpeedBonus: 25,
+    speedMult: 1.05,
+    sellPrice: 1,
+    rarity: "common",
+    bestiarySection: "garbage",
+    minigameTitle: "Plastic bottle — drifts in the junk. Keep it in the box!",
+  },
   lusca: {
     id: "lusca",
     progressSpeedBonus: -120,
@@ -795,6 +889,58 @@ const FISH = {
     rarity: "uncommon",
     bestiarySection: "ambiencePool",
     minigameTitle: "Rap fish — erratic! Keep it in the box!",
+  },
+  redCrab: {
+    id: "redCrab",
+    progressSpeedBonus: -10,
+    barPctPerSec: 30,
+    randomDir: true,
+    sellPrice: 30,
+    rarity: "rare",
+    bestiarySection: "titanInfection",
+    minigameTitle: "Red crab — stubborn catch! Keep it in the box!",
+  },
+  titanPrawn: {
+    id: "titanPrawn",
+    progressSpeedBonus: 0,
+    barPctPerSec: 50,
+    randomDir: true,
+    sellPrice: 40,
+    rarity: "rare",
+    bestiarySection: "titanInfection",
+    minigameTitle: "Titan prawn — fast! Keep it in the box!",
+  },
+  giantCatShark: {
+    id: "giantCatShark",
+    progressSpeedBonus: -60,
+    barPctPerSec: 60,
+    randomDir: true,
+    sellPrice: 55,
+    rarity: "rare",
+    bestiarySection: "titanInfection",
+    minigameTitle: "Giant cat shark — wild! Keep it in the box!",
+  },
+  hyperliosisPoolShark: {
+    id: "hyperliosisPoolShark",
+    progressSpeedBonus: -80,
+    barPctPerSec: 40,
+    randomDir: true,
+    sellPrice: 70,
+    rarity: "epic",
+    bestiarySection: "titanInfection",
+    minigameTitle: "Hyperliosis pool shark — toxic purple! Keep it in the box!",
+  },
+  anglerShark: {
+    id: "anglerShark",
+    progressSpeedBonus: -120,
+    barPctPerSec: 50,
+    randomDir: true,
+    anglerDecoyChancePerSecond: 0.1,
+    anglerDecoyDurationSec: 1,
+    sellPrice: 150,
+    rarity: "legendary",
+    bestiarySection: "titanInfection",
+    minigameTitle: "Angler shark — decoy lights! Keep it in the box!",
   },
 };
 
@@ -998,6 +1144,10 @@ let restoreSaveUndoSnapshot = null;
 let lastFishingIslandKind = null;
 let hackedInventoryAnimAcc = 0;
 let backpackOpen = false;
+
+function syncBackpackOpenBodyClass() {
+  document.body.classList.toggle("backpack-open", backpackOpen);
+}
 let bestiaryOpen = false;
 let gameState = "playing";
 let waterTimer = 0;
@@ -1032,6 +1182,7 @@ const caughtFish = {
   herring: false,
   metalSheet: false,
   garbageFish: false,
+  plasticBottle: false,
   clownfish: false,
   sunTang: false,
   parrotFish: false,
@@ -1042,7 +1193,35 @@ const caughtFish = {
   ghostFish: false,
   ghostBarracuda: false,
   anglerfish: false,
+  redCrab: false,
+  titanPrawn: false,
+  giantCatShark: false,
+  hyperliosisPoolShark: false,
+  anglerShark: false,
 };
+
+const TITAN_INFECTION_DURATION_MS = 3 * 60 * 1000;
+/** { key: "tx,ty", until: ms timestamp } — red water & loot table expire after 3 minutes. */
+let titanInfectedTiles = [];
+
+function pruneTitanInfections() {
+  const now = Date.now();
+  titanInfectedTiles = titanInfectedTiles.filter((e) => e.until > now);
+}
+
+function titanInfectedTilesFromSaveData(arr) {
+  if (!Array.isArray(arr)) return [];
+  const now = Date.now();
+  const out = [];
+  for (const x of arr) {
+    if (typeof x === "string") {
+      out.push({ key: x, until: now + TITAN_INFECTION_DURATION_MS });
+    } else if (x && typeof x.key === "string" && typeof x.until === "number" && x.until > now) {
+      out.push({ key: x.key, until: x.until });
+    }
+  }
+  return out;
+}
 
 let craftingUiMode = "shark";
 
@@ -1229,6 +1408,12 @@ function itemFromStored(entry) {
       const w = rollFishWeightG(entry);
       return { ...base, uid: newUid(), weightG: w, gold: false, hackedMut: false };
     }
+    if (UID_MISC_ITEM_IDS.has(entry)) {
+      return { ...base, uid: newUid() };
+    }
+    if (entry === "gunBullets") {
+      return { ...ITEMS.gunBullets, uid: newUid(), qty: 1 };
+    }
     return { ...base };
   }
   if (typeof entry === "object" && typeof entry.id === "string") {
@@ -1243,6 +1428,15 @@ function itemFromStored(entry) {
       const hackedMut = !!entry.hackedMut;
       const uid = typeof entry.uid === "string" ? entry.uid : newUid();
       return { ...base, uid, weightG: w, gold, forestMut, lightningMut, foolsMut, hackedMut };
+    }
+    if (UID_MISC_ITEM_IDS.has(entry.id)) {
+      const uid = typeof entry.uid === "string" ? entry.uid : newUid();
+      return { ...base, uid };
+    }
+    if (entry.id === "gunBullets") {
+      const uid = typeof entry.uid === "string" ? entry.uid : newUid();
+      const qty = Math.max(1, Math.floor(Number(entry.qty)) || 1);
+      return { ...ITEMS.gunBullets, uid, qty };
     }
     return { ...base };
   }
@@ -1264,6 +1458,12 @@ function serializeSlots(arr) {
         hackedMut: !!x.hackedMut,
       };
     }
+    if (UID_MISC_ITEM_IDS.has(x.id)) {
+      return { id: x.id, uid: x.uid };
+    }
+    if (x.id === "gunBullets") {
+      return { id: "gunBullets", uid: x.uid, qty: Math.max(1, Math.floor(Number(x.qty)) || 1) };
+    }
     return x.id;
   });
 }
@@ -1282,6 +1482,7 @@ function sanitizeStorage() {
 
 function captureRestoreSnapshot() {
   sanitizeStorage();
+  pruneTitanInfections();
   return {
     money,
     aprilFoolsTokens,
@@ -1299,6 +1500,7 @@ function captureRestoreSnapshot() {
     garbageRodPity,
     rodEnchants: { ...rodEnchants },
     redeemedCodes: Array.from(redeemedCodes),
+    titanInfectedTiles: titanInfectedTiles.map((e) => ({ key: e.key, until: e.until })),
   };
 }
 
@@ -1331,6 +1533,7 @@ function applyRestoreSnapshot(data) {
   caughtFish.herring = !!cf.herring;
   caughtFish.metalSheet = !!cf.metalSheet;
   caughtFish.garbageFish = !!cf.garbageFish;
+  caughtFish.plasticBottle = !!cf.plasticBottle;
   caughtFish.clownfish = !!cf.clownfish;
   caughtFish.sunTang = !!cf.sunTang;
   caughtFish.parrotFish = !!cf.parrotFish;
@@ -1341,6 +1544,12 @@ function applyRestoreSnapshot(data) {
   caughtFish.ghostFish = !!cf.ghostFish;
   caughtFish.ghostBarracuda = !!cf.ghostBarracuda;
   caughtFish.anglerfish = !!cf.anglerfish;
+  caughtFish.redCrab = !!cf.redCrab;
+  caughtFish.titanPrawn = !!cf.titanPrawn;
+  caughtFish.giantCatShark = !!cf.giantCatShark;
+  caughtFish.hyperliosisPoolShark = !!cf.hyperliosisPoolShark;
+  caughtFish.anglerShark = !!cf.anglerShark;
+  titanInfectedTiles = titanInfectedTilesFromSaveData(data.titanInfectedTiles);
   if (data.player && typeof data.player.x === "number" && typeof data.player.y === "number") {
     player.x = data.player.x;
     player.y = data.player.y;
@@ -1385,6 +1594,7 @@ function applyRestoreSnapshot(data) {
 function saveGame() {
   try {
     sanitizeStorage();
+    pruneTitanInfections();
     localStorage.setItem(
       SAVE_KEY,
       JSON.stringify({
@@ -1411,6 +1621,7 @@ function saveGame() {
         aprilFoolsTokens,
         rodEnchants: { ...rodEnchants },
         restoreSaveUndoSnapshot,
+        titanInfectedTiles: titanInfectedTiles.map((e) => ({ key: e.key, until: e.until })),
       })
     );
   } catch (e) {
@@ -1458,6 +1669,7 @@ function loadGame() {
     caughtFish.herring = !!data.caughtFish?.herring;
     caughtFish.metalSheet = !!data.caughtFish?.metalSheet;
     caughtFish.garbageFish = !!data.caughtFish?.garbageFish;
+    caughtFish.plasticBottle = !!data.caughtFish?.plasticBottle;
     caughtFish.clownfish = !!data.caughtFish?.clownfish;
     caughtFish.sunTang = !!data.caughtFish?.sunTang;
     caughtFish.parrotFish = !!data.caughtFish?.parrotFish;
@@ -1468,6 +1680,12 @@ function loadGame() {
     caughtFish.ghostFish = !!data.caughtFish?.ghostFish;
     caughtFish.ghostBarracuda = !!data.caughtFish?.ghostBarracuda;
     caughtFish.anglerfish = !!data.caughtFish?.anglerfish;
+    caughtFish.redCrab = !!data.caughtFish?.redCrab;
+    caughtFish.titanPrawn = !!data.caughtFish?.titanPrawn;
+    caughtFish.giantCatShark = !!data.caughtFish?.giantCatShark;
+    caughtFish.hyperliosisPoolShark = !!data.caughtFish?.hyperliosisPoolShark;
+    caughtFish.anglerShark = !!data.caughtFish?.anglerShark;
+    titanInfectedTiles = titanInfectedTilesFromSaveData(data.titanInfectedTiles);
     if (data.player && typeof data.player.x === "number" && typeof data.player.y === "number") {
       player.x = data.player.x;
       player.y = data.player.y;
@@ -1539,6 +1757,7 @@ function applyDefaultNewGame() {
   caughtFish.herring = false;
   caughtFish.metalSheet = false;
   caughtFish.garbageFish = false;
+  caughtFish.plasticBottle = false;
   caughtFish.clownfish = false;
   caughtFish.sunTang = false;
   caughtFish.parrotFish = false;
@@ -1549,6 +1768,12 @@ function applyDefaultNewGame() {
   caughtFish.ghostFish = false;
   caughtFish.ghostBarracuda = false;
   caughtFish.anglerfish = false;
+  caughtFish.redCrab = false;
+  caughtFish.titanPrawn = false;
+  caughtFish.giantCatShark = false;
+  caughtFish.hyperliosisPoolShark = false;
+  caughtFish.anglerShark = false;
+  titanInfectedTiles = [];
   player.x = 0;
   player.y = -ISLAND_HALF_PX * 0.75;
   player.facing.x = 0;
@@ -1849,8 +2074,124 @@ function isWaterTile(px, py) {
     t === TILE.SHALLOW_OCEAN ||
     t === TILE.DARK_POOL ||
     t === TILE.LAKE ||
-    t === TILE.ILLUSION_WATER
+    t === TILE.ILLUSION_WATER ||
+    t === TILE.POND
   );
+}
+
+function isWaterTileType(type) {
+  return (
+    type === TILE.DEEP_OCEAN ||
+    type === TILE.SHALLOW_OCEAN ||
+    type === TILE.DARK_POOL ||
+    type === TILE.LAKE ||
+    type === TILE.ILLUSION_WATER ||
+    type === TILE.POND
+  );
+}
+
+function titanInfectionTileKey(tx, ty) {
+  return `${tx},${ty}`;
+}
+
+function isTitanInfectedWaterAt(px, py) {
+  const now = Date.now();
+  const key = titanInfectionTileKey(Math.floor(px / TILE_SIZE), Math.floor(py / TILE_SIZE));
+  return titanInfectedTiles.some((e) => e.key === key && e.until > now);
+}
+
+/** 5×5 centered on the clicked water tile; only water tiles are marked. */
+function addTitanInfectionAtWorld(worldX, worldY) {
+  const cx = Math.floor(worldX / TILE_SIZE);
+  const cy = Math.floor(worldY / TILE_SIZE);
+  const until = Date.now() + TITAN_INFECTION_DURATION_MS;
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const tx = cx + dx;
+      const ty = cy + dy;
+      const px = (tx + 0.5) * TILE_SIZE;
+      const py = (ty + 0.5) * TILE_SIZE;
+      if (!isWaterTile(px, py)) continue;
+      const key = titanInfectionTileKey(tx, ty);
+      const ex = titanInfectedTiles.find((e) => e.key === key);
+      if (ex) ex.until = Math.max(ex.until, until);
+      else titanInfectedTiles.push({ key, until });
+    }
+  }
+}
+
+/** Weights follow 1 : 1/3 : 1/9 : 1/15 : 1/50 (scaled ×450). */
+function rollTitanInfectionFish() {
+  const rows = [
+    { id: "redCrab", w: 450 },
+    { id: "titanPrawn", w: 150 },
+    { id: "giantCatShark", w: 50 },
+    { id: "hyperliosisPoolShark", w: 30 },
+    { id: "anglerShark", w: 9 },
+  ];
+  const sum = rows.reduce((a, r) => a + r.w, 0);
+  let r = Math.random() * sum;
+  for (const row of rows) {
+    r -= row.w;
+    if (r <= 0) return row.id;
+  }
+  return "redCrab";
+}
+
+function screenToWorldOnGameCanvas(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const vw = canvas.width / dpr;
+  const vh = canvas.height / dpr;
+  const mx = ((clientX - rect.left) / Math.max(1e-6, rect.width)) * vw;
+  const my = ((clientY - rect.top) / Math.max(1e-6, rect.height)) * vh;
+  return { x: camera.x + (mx - vw / 2), y: camera.y + (my - vh / 2) };
+}
+
+function consumeItemByUidFromInvBackpack(uid) {
+  if (!uid) return false;
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    if (inventory[i]?.uid === uid) {
+      inventory[i] = null;
+      return true;
+    }
+  }
+  for (let i = 0; i < BACKPACK_SIZE; i++) {
+    if (backpack[i]?.uid === uid) {
+      backpack[i] = null;
+      return true;
+    }
+  }
+  return false;
+}
+
+function tryUseStormRelicAtClick() {
+  if (gameState !== "playing" || fishingState !== "idle" || illusionTeleportAnim) return;
+  if (held.kind !== "item" || !held.uid) return;
+  const it =
+    inventory.find((x) => x && x.uid === held.uid) || backpack.find((x) => x && x.uid === held.uid);
+  if (!it || it.id !== "stormRelic") return;
+  activateStormFromRelic();
+  consumeItemByUidFromInvBackpack(held.uid);
+  held = { kind: "rod", uid: null };
+  renderInventory();
+  renderBackpackGrid();
+  saveGame();
+}
+
+function tryUseTitanRelicAtClick(clientX, clientY) {
+  if (gameState !== "playing" || fishingState !== "idle" || illusionTeleportAnim) return;
+  if (held.kind !== "item" || !held.uid) return;
+  const it =
+    inventory.find((x) => x && x.uid === held.uid) || backpack.find((x) => x && x.uid === held.uid);
+  if (!it || it.id !== "titanRelic") return;
+  const p = screenToWorldOnGameCanvas(clientX, clientY);
+  if (!isWaterTile(p.x, p.y)) return;
+  addTitanInfectionAtWorld(p.x, p.y);
+  consumeItemByUidFromInvBackpack(held.uid);
+  held = { kind: "rod", uid: null };
+  renderInventory();
+  renderBackpackGrid();
+  saveGame();
 }
 
 function isDrowningWater(px, py) {
@@ -1932,6 +2273,30 @@ function illusionEnchanterPos() {
 
 function isNearIllusionEnchanter(px, py) {
   const p = illusionEnchanterPos();
+  if (!p) return false;
+  return Math.hypot(px - p.x, py - p.y) < 78;
+}
+
+function ghostCrafterPos() {
+  const ill = illusionIsland();
+  if (!ill) return null;
+  return islandWorldPos(ill, -6, -19);
+}
+
+function isNearGhostCrafter(px, py) {
+  const p = ghostCrafterPos();
+  if (!p) return false;
+  return Math.hypot(px - p.x, py - p.y) < 78;
+}
+
+function relicSellerPos() {
+  const ill = illusionIsland();
+  if (!ill) return null;
+  return islandWorldPos(ill, 13, -19);
+}
+
+function isNearRelicSeller(px, py) {
+  const p = relicSellerPos();
   if (!p) return false;
   return Math.hypot(px - p.x, py - p.y) < 78;
 }
@@ -2056,10 +2421,93 @@ function moveFavoriteFishToBackpack(favIndex) {
   saveGame();
 }
 
+function countGunBulletsTotal() {
+  let n = 0;
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    if (inventory[i]?.id === "gunBullets") n += Math.max(0, inventory[i].qty | 0);
+  }
+  for (let i = 0; i < BACKPACK_SIZE; i++) {
+    if (backpack[i]?.id === "gunBullets") n += Math.max(0, backpack[i].qty | 0);
+  }
+  return n;
+}
+
+function hasGunBulletsStackSlot() {
+  for (let i = 0; i < SLOT_COUNT; i++) if (inventory[i]?.id === "gunBullets") return true;
+  for (let i = 0; i < BACKPACK_SIZE; i++) if (backpack[i]?.id === "gunBullets") return true;
+  return false;
+}
+
+function canAddGunBulletsMerge() {
+  return hasGunBulletsStackSlot() || hasAnyInventorySpace();
+}
+
+function consumeOneGunBullet() {
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    const it = inventory[i];
+    if (it?.id === "gunBullets" && (it.qty | 0) > 0) {
+      it.qty = (it.qty | 0) - 1;
+      if (it.qty <= 0) {
+        if (held.kind === "item" && held.uid === it.uid) held = { kind: "rod", uid: null };
+        inventory[i] = null;
+      }
+      return true;
+    }
+  }
+  for (let i = 0; i < BACKPACK_SIZE; i++) {
+    const it = backpack[i];
+    if (it?.id === "gunBullets" && (it.qty | 0) > 0) {
+      it.qty = (it.qty | 0) - 1;
+      if (it.qty <= 0) {
+        if (held.kind === "item" && held.uid === it.uid) held = { kind: "rod", uid: null };
+        backpack[i] = null;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Adds bullets to an existing stack or first empty slot. */
+function addOrMergeGunBullets(amount) {
+  const q0 = Math.max(1, amount | 0);
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    if (inventory[i]?.id === "gunBullets") {
+      inventory[i].qty = Math.min(999999, Math.max(0, inventory[i].qty | 0) + q0);
+      return true;
+    }
+  }
+  for (let i = 0; i < BACKPACK_SIZE; i++) {
+    if (backpack[i]?.id === "gunBullets") {
+      backpack[i].qty = Math.min(999999, Math.max(0, backpack[i].qty | 0) + q0);
+      return true;
+    }
+  }
+  const stack = { ...ITEMS.gunBullets, uid: newUid(), qty: q0 };
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    if (!inventory[i]) {
+      inventory[i] = stack;
+      return true;
+    }
+  }
+  for (let i = 0; i < BACKPACK_SIZE; i++) {
+    if (!backpack[i]) {
+      backpack[i] = stack;
+      return true;
+    }
+  }
+  return false;
+}
+
 function addItem(item) {
   if (!item || !item.id) return false;
   if (ROD_IDS.has(item.id)) return false;
   const copy = { ...item };
+  if (UID_MISC_ITEM_IDS.has(copy.id) && !copy.uid) copy.uid = newUid();
+  if (copy.id === "gunBullets") {
+    const q = Math.max(1, Math.floor(Number(copy.qty)) || 1);
+    return addOrMergeGunBullets(q);
+  }
   for (let i = 0; i < SLOT_COUNT; i++) {
     if (!inventory[i]) {
       inventory[i] = copy;
@@ -2138,8 +2586,14 @@ function removeAllFishForSell() {
     "ghostFish",
     "ghostBarracuda",
     "anglerfish",
+    "redCrab",
+    "titanPrawn",
+    "giantCatShark",
+    "hyperliosisPoolShark",
+    "anglerShark",
     "herring",
     "garbageFish",
+    "plasticBottle",
   ];
   const counts = {
     minnow: 0,
@@ -2168,8 +2622,14 @@ function removeAllFishForSell() {
     ghostFish: 0,
     ghostBarracuda: 0,
     anglerfish: 0,
+    redCrab: 0,
+    titanPrawn: 0,
+    giantCatShark: 0,
+    hyperliosisPoolShark: 0,
+    anglerShark: 0,
     herring: 0,
     garbageFish: 0,
+    plasticBottle: 0,
   };
   const removed = [];
   for (let i = 0; i < SLOT_COUNT; i++) {
@@ -2215,6 +2675,7 @@ function markCaught(id) {
   if (id === "herring") caughtFish.herring = true;
   if (id === "metalSheet") caughtFish.metalSheet = true;
   if (id === "garbageFish") caughtFish.garbageFish = true;
+  if (id === "plasticBottle") caughtFish.plasticBottle = true;
   if (id === "clownfish") caughtFish.clownfish = true;
   if (id === "sunTang") caughtFish.sunTang = true;
   if (id === "parrotFish") caughtFish.parrotFish = true;
@@ -2225,6 +2686,11 @@ function markCaught(id) {
   if (id === "ghostFish") caughtFish.ghostFish = true;
   if (id === "ghostBarracuda") caughtFish.ghostBarracuda = true;
   if (id === "anglerfish") caughtFish.anglerfish = true;
+  if (id === "redCrab") caughtFish.redCrab = true;
+  if (id === "titanPrawn") caughtFish.titanPrawn = true;
+  if (id === "giantCatShark") caughtFish.giantCatShark = true;
+  if (id === "hyperliosisPoolShark") caughtFish.hyperliosisPoolShark = true;
+  if (id === "anglerShark") caughtFish.anglerShark = true;
 }
 
 function renderBestiary() {
@@ -2249,6 +2715,7 @@ function renderBestiary() {
     { key: "sunstrike", label: "Sunstrike" },
     { key: "illusion", label: "Illusion" },
     { key: "wildOcean", label: "Wild ocean" },
+    { key: "titanInfection", label: "Titan infection" },
     { key: "garbage", label: "Garbage" },
   ];
 
@@ -2271,7 +2738,7 @@ function renderBestiary() {
   title.textContent = tabs.find((x) => x.key === bestiaryTab)?.label || "Bestiary";
   main.appendChild(title);
 
-  const rarityRank = { common: 0, uncommon: 1, rare: 2, epic: 3, forgotten: 4 };
+  const rarityRank = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4, forgotten: 5 };
   function appendSorted(entries) {
     const sorted = entries
       .map((e) => ({
@@ -2322,6 +2789,19 @@ function renderBestiary() {
       { fid: "rapFish", label: "Rap fish", rarity: "uncommon" },
       { fid: "lusca", label: "Lusca", rarity: "forgotten" },
     ]);
+  } else if (bestiaryTab === "titanInfection") {
+    const intro = document.createElement("p");
+    intro.className = "bestiary-event-intro";
+    intro.textContent =
+      "Storm relic: hold it and left-click the game canvas to start a storm (consumes the relic). Titan relic: hold it and left-click water on the canvas — red 5×5 patches use a special loot table when you cast into them.";
+    main.appendChild(intro);
+    appendSorted([
+      { fid: "redCrab", label: "Red crab", rarity: "rare" },
+      { fid: "titanPrawn", label: "Titan prawn", rarity: "rare" },
+      { fid: "giantCatShark", label: "Giant cat shark", rarity: "rare" },
+      { fid: "hyperliosisPoolShark", label: "Hyperliosis pool shark", rarity: "epic" },
+      { fid: "anglerShark", label: "Angler shark", rarity: "legendary" },
+    ]);
   } else if (bestiaryTab === "sunstrike") {
     appendSorted([
       { fid: "flyingFish", label: "Flying fish", rarity: "common" },
@@ -2344,6 +2824,7 @@ function renderBestiary() {
   } else if (bestiaryTab === "garbage") {
     appendSorted([
       { fid: "garbageFish", label: "Garbage fish", rarity: "common" },
+      { fid: "plasticBottle", label: "Plastic bottle", rarity: "common" },
       { fid: "metalSheet", label: "Metal sheet", rarity: "common" },
     ]);
   }
@@ -2389,8 +2870,15 @@ function makeBestiaryRow(fid, label, rarityLabel) {
       drawBarracudaModel(c, 24, 24, 1.1, false);
       c.restore();
     } else if (fid === "anglerfish") drawAnglerfishModel(c, 24, 24, 1.1, false);
+    else if (fid === "redCrab") drawRedCrabModel(c, 24, 24, 1.1, false);
+    else if (fid === "titanPrawn") drawTitanPrawnModel(c, 24, 24, 1.1, false);
+    else if (fid === "giantCatShark") drawGiantCatSharkModel(c, 24, 24, 1.1, false);
+    else if (fid === "hyperliosisPoolShark") drawHyperliosisPoolSharkModel(c, 24, 24, 1.1, false);
+    else if (fid === "anglerShark") drawAnglerSharkModel(c, 24, 24, 1.1, false);
     else if (fid === "herring") drawHerringModel(c, 24, 24, 1.1, false);
     else if (fid === "metalSheet") drawMetalSheetModel(c, 24, 24, 1.1, false);
+    else if (fid === "garbageFish") drawGarbageFishModel(c, 24, 24, 1.1, false);
+    else if (fid === "plasticBottle") drawPlasticBottleModel(c, 24, 24, 1.1, false);
   } else {
     c.fillStyle = "rgba(40,50,60,0.6)";
     c.fillRect(0, 0, 48, 48);
@@ -2410,6 +2898,8 @@ function makeBestiaryRow(fid, label, rarityLabel) {
           ? "Rare"
           : rarityLabel === "epic"
             ? "Epic"
+            : rarityLabel === "legendary"
+            ? "Legendary"
             : rarityLabel === "forgotten"
               ? "Forgotten"
               : "Epic";
@@ -2445,9 +2935,15 @@ function fishInfoLine(fid) {
   if (fid === "ghostFish") return "Base $20 · 4g · Illusion Island";
   if (fid === "ghostBarracuda") return "Base $30 · 70–110g · Illusion Island";
   if (fid === "anglerfish") return "Base $42 · 30–40g · Illusion Island";
+  if (fid === "redCrab") return "Base $30 · 90–240g · Titan infection";
+  if (fid === "titanPrawn") return "Base $40 · 120–240g · Titan infection";
+  if (fid === "giantCatShark") return "Base $55 · 200–400g · Titan infection";
+  if (fid === "hyperliosisPoolShark") return "Base $70 · 400–500g · Titan infection";
+  if (fid === "anglerShark") return "Base $150 · 500–900g · Titan infection · decoy lure";
   if (fid === "herring") return "Base $9 · 10–40g";
   if (fid === "metalSheet") return "Cannot sell · 50–1000g";
   if (fid === "garbageFish") return "Base $2 · 10–40g";
+  if (fid === "plasticBottle") return "Base $1 · 8–35g · Garbage Island";
   return "";
 }
 
@@ -2502,8 +2998,11 @@ function standPosDestroy(island) {
   return blockCenterWorld(island, DESTROY_BLOCK);
 }
 
+/** Must overlap between adjacent stalls (sell/shop are ~6 tiles apart ≈ 192px center-to-center). */
+const STAND_INTERACT_RADIUS_PX = 100;
+
 function nearStand(px, py, stand) {
-  return Math.hypot(px - stand.x, py - stand.y) < 52;
+  return Math.hypot(px - stand.x, py - stand.y) < STAND_INTERACT_RADIUS_PX;
 }
 
 function drawRodModel(c, cx, cy, scale, angleRad, variant) {
@@ -2516,11 +3015,41 @@ function drawRodModel(c, cx, cy, scale, angleRad, variant) {
   const garbage = variant === "garbage";
   const liar = variant === "liar";
   const rod67 = variant === "rod67";
+  const gun = variant === "gun";
   c.save();
   c.translate(cx, cy);
   c.rotate(angleRad);
   const s = scale;
-  if (garbage) {
+  if (gun) {
+    c.fillStyle = "#2d3238";
+    c.strokeStyle = "#0d0f12";
+    c.lineWidth = Math.max(1, 1.1 * s);
+    c.beginPath();
+    c.roundRect(-12 * s, -6 * s, 14 * s, 22 * s, 3 * s);
+    c.fill();
+    c.stroke();
+    c.fillStyle = "#1a1d22";
+    c.fillRect(2 * s, -4 * s, 22 * s, 10 * s);
+    c.strokeRect(2 * s, -4 * s, 22 * s, 10 * s);
+    c.fillStyle = "#4a4a52";
+    c.fillRect(22 * s, -2 * s, 20 * s, 6 * s);
+    c.strokeStyle = "#222";
+    c.strokeRect(22 * s, -2 * s, 20 * s, 6 * s);
+    c.fillStyle = "#c62828";
+    c.beginPath();
+    c.arc(8 * s, 1 * s, 3.2 * s, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#ffd54f";
+    c.fillRect(40 * s, -0.5 * s, 5 * s, 3 * s);
+    c.fillStyle = "#5d4037";
+    c.beginPath();
+    c.moveTo(-12 * s, 8 * s);
+    c.lineTo(-18 * s, 16 * s);
+    c.lineTo(-8 * s, 14 * s);
+    c.closePath();
+    c.fill();
+    c.stroke();
+  } else if (garbage) {
     c.strokeStyle = "#6d4c41";
     c.lineWidth = Math.max(1, 3.2 * s);
     c.lineCap = "round";
@@ -2887,6 +3416,196 @@ function drawPoolSharkModel(c, cx, cy, scale, flip) {
   c.lineTo(26, 6);
   c.stroke();
 
+  c.restore();
+}
+
+function drawRedCrabModel(c, cx, cy, scale, flip) {
+  const s = scale * (flip ? -1 : 1);
+  c.save();
+  c.translate(cx, cy);
+  c.scale(s, scale);
+  c.fillStyle = "#c62828";
+  c.strokeStyle = "rgba(0,0,0,0.35)";
+  c.lineWidth = 1.2;
+  c.beginPath();
+  c.roundRect(-14, -8, 20, 16, 4);
+  c.fill();
+  c.stroke();
+  c.fillStyle = "#b71c1c";
+  c.beginPath();
+  c.arc(6, -2, 5, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#111";
+  c.beginPath();
+  c.arc(9, -3, 1.2, 0, Math.PI * 2);
+  c.fill();
+  for (const [lx, ly, ang] of [
+    [-12, 8, 0.3],
+    [4, 8, -0.2],
+  ]) {
+    c.save();
+    c.translate(lx, ly);
+    c.rotate(ang);
+    c.strokeStyle = "#8b0000";
+    c.lineWidth = 2;
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.lineTo(-6, 4);
+    c.stroke();
+    c.restore();
+  }
+  c.restore();
+}
+
+function drawTitanPrawnModel(c, cx, cy, scale, flip) {
+  const s = scale * (flip ? -1 : 1);
+  c.save();
+  c.translate(cx, cy);
+  c.scale(s, scale);
+  const g = c.createLinearGradient(-16, -4, 14, 6);
+  g.addColorStop(0, "#ff6f00");
+  g.addColorStop(0.5, "#ff3d00");
+  g.addColorStop(1, "#bf360c");
+  c.fillStyle = g;
+  c.beginPath();
+  c.ellipse(0, 0, 16, 8, 0, 0, Math.PI * 2);
+  c.fill();
+  c.strokeStyle = "rgba(0,0,0,0.35)";
+  c.lineWidth = 1.1;
+  c.stroke();
+  c.fillStyle = "rgba(255,255,255,0.2)";
+  c.fillRect(-10, -4, 14, 3);
+  c.fillStyle = "#111";
+  c.beginPath();
+  c.arc(10, -1, 1.4, 0, Math.PI * 2);
+  c.fill();
+  c.strokeStyle = "#5d4037";
+  c.lineWidth = 1.4;
+  for (let i = 0; i < 5; i++) {
+    c.beginPath();
+    c.moveTo(-14 - i * 2, 2 + i * 0.5);
+    c.lineTo(-20 - i * 2, 0);
+    c.stroke();
+  }
+  c.restore();
+}
+
+function drawGiantCatSharkModel(c, cx, cy, scale, flip) {
+  const s = scale * (flip ? -1 : 1);
+  c.save();
+  c.translate(cx, cy);
+  c.scale(s, scale);
+  const g = c.createLinearGradient(-20, -8, 18, 8);
+  g.addColorStop(0, "#5d4037");
+  g.addColorStop(0.45, "#78909c");
+  g.addColorStop(1, "#37474f");
+  c.fillStyle = g;
+  c.beginPath();
+  c.moveTo(-20, 0);
+  c.quadraticCurveTo(-8, -11, 10, -5);
+  c.lineTo(18, 0);
+  c.lineTo(10, 6);
+  c.quadraticCurveTo(-8, 11, -20, 0);
+  c.closePath();
+  c.fill();
+  c.strokeStyle = "rgba(0,0,0,0.35)";
+  c.lineWidth = 1.1;
+  c.stroke();
+  c.fillStyle = "#eceff1";
+  c.beginPath();
+  c.ellipse(2, 3, 12, 5, 0, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#111";
+  c.beginPath();
+  c.arc(12, -2, 2, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#5d4037";
+  c.beginPath();
+  c.moveTo(-4, -8);
+  c.lineTo(2, -18);
+  c.lineTo(8, -7);
+  c.closePath();
+  c.fill();
+  c.restore();
+}
+
+function drawHyperliosisPoolSharkModel(c, cx, cy, scale, flip) {
+  const s = scale * (flip ? -1 : 1);
+  c.save();
+  c.translate(cx, cy);
+  c.scale(s, scale);
+  c.fillStyle = "#6a1b9a";
+  c.beginPath();
+  c.ellipse(0, 0, 22, 12, 0, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#ce93d8";
+  c.beginPath();
+  c.ellipse(2, 3, 16, 7, 0, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#4a148c";
+  c.beginPath();
+  c.moveTo(-20, 0);
+  c.lineTo(-34, -10);
+  c.lineTo(-32, 0);
+  c.lineTo(-34, 10);
+  c.closePath();
+  c.fill();
+  c.fillStyle = "#7b1fa2";
+  c.beginPath();
+  c.moveTo(-2, -10);
+  c.lineTo(8, -26);
+  c.lineTo(14, -10);
+  c.closePath();
+  c.fill();
+  c.fillStyle = "#111";
+  c.beginPath();
+  c.arc(16, -2, 2.2, 0, Math.PI * 2);
+  c.fill();
+  c.strokeStyle = "rgba(0,0,0,0.35)";
+  c.lineWidth = 1.4;
+  c.beginPath();
+  c.moveTo(18, 4);
+  c.lineTo(26, 6);
+  c.stroke();
+  c.restore();
+}
+
+function drawAnglerSharkModel(c, cx, cy, scale, flip) {
+  const s = scale * (flip ? -1 : 1);
+  c.save();
+  c.translate(cx, cy);
+  c.scale(s, scale);
+  c.fillStyle = "#455a64";
+  c.beginPath();
+  c.ellipse(0, 0, 22, 11, 0, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#cfd8dc";
+  c.beginPath();
+  c.ellipse(2, 3, 15, 6, 0, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#37474f";
+  c.beginPath();
+  c.moveTo(-20, 0);
+  c.lineTo(-32, -9);
+  c.lineTo(-30, 0);
+  c.lineTo(-32, 9);
+  c.closePath();
+  c.fill();
+  c.strokeStyle = "rgba(255,255,200,0.95)";
+  c.lineWidth = 2;
+  c.lineCap = "round";
+  c.beginPath();
+  c.moveTo(18, -6);
+  c.quadraticCurveTo(28, -22, 34, -18);
+  c.stroke();
+  c.fillStyle = "rgba(255,255,180,0.9)";
+  c.beginPath();
+  c.arc(34, -18, 3, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#111";
+  c.beginPath();
+  c.arc(14, -2, 2, 0, Math.PI * 2);
+  c.fill();
   c.restore();
 }
 
@@ -3832,6 +4551,37 @@ function drawGarbageFishModel(c, cx, cy, scale, flip) {
   c.restore();
 }
 
+function drawPlasticBottleModel(c, cx, cy, scale, flip) {
+  const s = scale * (flip ? -1 : 1);
+  c.save();
+  c.translate(cx, cy);
+  c.scale(s, scale);
+  c.fillStyle = "rgba(180, 220, 255, 0.45)";
+  c.strokeStyle = "rgba(30, 80, 120, 0.55)";
+  c.lineWidth = 1.2;
+  c.beginPath();
+  c.moveTo(-5, -16);
+  c.lineTo(5, -16);
+  c.lineTo(6, -10);
+  c.lineTo(10, 14);
+  c.quadraticCurveTo(10, 18, 6, 18);
+  c.lineTo(-6, 18);
+  c.quadraticCurveTo(-10, 18, -10, 14);
+  c.lineTo(-6, -10);
+  c.closePath();
+  c.fill();
+  c.stroke();
+  c.fillStyle = "rgba(60, 130, 190, 0.35)";
+  c.beginPath();
+  c.ellipse(0, 4, 5.5, 9, 0, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = "#5c4033";
+  c.fillRect(-4, -18, 8, 4);
+  c.strokeStyle = "rgba(0,0,0,0.35)";
+  c.strokeRect(-4, -18, 8, 4);
+  c.restore();
+}
+
 function drawBlueTangModel(c, cx, cy, scale, flip) {
   // Pufferfish silhouette, blue tang colors
   const s = scale * (flip ? -1 : 1);
@@ -3878,6 +4628,52 @@ function drawBlueTangModel(c, cx, cy, scale, flip) {
   c.restore();
 }
 
+function drawRelicModel(c, cx, cy, sc, itemId) {
+  const s = sc / 48;
+  c.save();
+  c.translate(cx, cy);
+  c.scale(s, s);
+  if (itemId === "stormRelic") {
+    c.fillStyle = "#37474f";
+    c.beginPath();
+    c.ellipse(0, -2, 14, 9, 0, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#546e7a";
+    c.beginPath();
+    c.ellipse(-5, 2, 8, 6, 0.2, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = "#ffeb3b";
+    c.lineWidth = 2.5;
+    c.lineCap = "round";
+    c.lineJoin = "round";
+    c.beginPath();
+    c.moveTo(6, -10);
+    c.lineTo(2, -2);
+    c.lineTo(6, -2);
+    c.lineTo(0, 10);
+    c.stroke();
+  } else if (itemId === "titanRelic") {
+    c.fillStyle = "#78909c";
+    c.strokeStyle = "rgba(0,0,0,0.35)";
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.roundRect(-8, -14, 16, 22, 3);
+    c.fill();
+    c.stroke();
+    c.fillStyle = "#ffc107";
+    c.fillRect(-9, -6, 18, 4);
+    c.fillStyle = "#eceff1";
+    c.beginPath();
+    c.arc(0, -14, 5, Math.PI, 0);
+    c.lineTo(5, -10);
+    c.lineTo(-5, -10);
+    c.closePath();
+    c.fill();
+    c.stroke();
+  }
+  c.restore();
+}
+
 function drawItemIcon(c, itemId, w, h) {
   c.clearRect(0, 0, w, h);
   const cx = w / 2;
@@ -3903,6 +4699,18 @@ function drawItemIcon(c, itemId, w, h) {
     drawRodModel(c, cx, cy - 2, sc / 42, -Math.PI / 5, "liar");
   } else if (itemId === "rod67") {
     drawRodModel(c, cx, cy - 2, sc / 42, -Math.PI / 5, "rod67");
+  } else if (itemId === "gunRod") {
+    drawRodModel(c, cx, cy - 2, sc / 42, -Math.PI / 5, "gun");
+  } else if (itemId === "gunBullets") {
+    c.fillStyle = "#b8860b";
+    c.strokeStyle = "#5d4037";
+    c.lineWidth = 1;
+    c.beginPath();
+    c.roundRect(cx - sc * 0.1, cy - sc * 0.28, sc * 0.2, sc * 0.5, sc * 0.05);
+    c.fill();
+    c.stroke();
+    c.fillStyle = "#8d6e63";
+    c.fillRect(cx - sc * 0.08, cy - sc * 0.34, sc * 0.16, sc * 0.1);
   } else if (itemId === "minnow") {
     drawMinnowModel(c, cx, cy, sc / 28, false);
   } else if (itemId === "cod") {
@@ -3966,6 +4774,47 @@ function drawItemIcon(c, itemId, w, h) {
     drawMetalSheetModel(c, cx, cy, sc / 28, false);
   } else if (itemId === "garbageFish") {
     drawGarbageFishModel(c, cx, cy, sc / 28, false);
+  } else if (itemId === "plasticBottle") {
+    drawPlasticBottleModel(c, cx, cy, sc / 28, false);
+  } else if (itemId === "redCrab") {
+    drawRedCrabModel(c, cx, cy, sc / 28, false);
+  } else if (itemId === "titanPrawn") {
+    drawTitanPrawnModel(c, cx, cy, sc / 28, false);
+  } else if (itemId === "giantCatShark") {
+    drawGiantCatSharkModel(c, cx, cy, sc / 28, false);
+  } else if (itemId === "hyperliosisPoolShark") {
+    drawHyperliosisPoolSharkModel(c, cx, cy, sc / 28, false);
+  } else if (itemId === "anglerShark") {
+    drawAnglerSharkModel(c, cx, cy, sc / 28, false);
+  } else if (itemId === "stormRelic" || itemId === "titanRelic") {
+    drawRelicModel(c, cx, cy, sc, itemId);
+  } else if (itemId === "secretPaper") {
+    c.fillStyle = "#ede8dc";
+    c.strokeStyle = "rgba(50, 40, 30, 0.42)";
+    c.lineWidth = Math.max(1, sc * 0.04);
+    const pw = sc * 0.52;
+    const ph = sc * 0.68;
+    const x0 = cx - pw / 2;
+    const y0 = cy - ph / 2;
+    const r = sc * 0.06;
+    c.beginPath();
+    c.moveTo(x0 + r, y0);
+    c.lineTo(x0 + pw - r, y0);
+    c.quadraticCurveTo(x0 + pw, y0, x0 + pw, y0 + r);
+    c.lineTo(x0 + pw, y0 + ph - r);
+    c.quadraticCurveTo(x0 + pw, y0 + ph, x0 + pw - r, y0 + ph);
+    c.lineTo(x0 + r, y0 + ph);
+    c.quadraticCurveTo(x0, y0 + ph, x0, y0 + ph - r);
+    c.lineTo(x0, y0 + r);
+    c.quadraticCurveTo(x0, y0, x0 + r, y0);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.fillStyle = "#2a2a44";
+    c.font = `bold ${Math.max(4, sc * 0.11)}px ui-monospace, monospace`;
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    c.fillText(SECRET_PAPER_REVEAL_TEXT, cx, cy);
   }
 }
 
@@ -4088,10 +4937,70 @@ function drawHeldItemInWorld() {
   else if (it.id === "herring") drawHerringModel(c, hx, hy, sc, fx < 0);
   else if (it.id === "metalSheet") drawMetalSheetModel(c, hx, hy, sc, fx < 0);
   else if (it.id === "garbageFish") drawGarbageFishModel(c, hx, hy, sc, fx < 0);
+  else if (it.id === "plasticBottle") drawPlasticBottleModel(c, hx, hy, sc, fx < 0);
   else if (it.id === "tropicalRed") drawTropicalModel(c, hx, hy, sc, fx < 0, "red");
   else if (it.id === "tropicalYellow") drawTropicalModel(c, hx, hy, sc, fx < 0, "yellow");
   else if (it.id === "tropicalOrange") drawTropicalModel(c, hx, hy, sc, fx < 0, "orange");
   else if (it.id === "tropicalPurple") drawTropicalModel(c, hx, hy, sc, fx < 0, "purple");
+  else if (it.id === "stormRelic" || it.id === "titanRelic") {
+    c.save();
+    c.translate(hx, hy);
+    drawRelicModel(c, 0, 0, 32, it.id);
+    c.restore();
+  } else if (it.id === "gunBullets") {
+    c.save();
+    c.translate(hx, hy);
+    const ang = Math.atan2(fy, fx);
+    c.rotate(ang + Math.PI * 0.5);
+    for (let k = 0; k < 3; k++) {
+      c.save();
+      c.translate(k * 3 - 3, k * 2 - 2);
+      c.fillStyle = "#c9a227";
+      c.strokeStyle = "#5d4037";
+      c.lineWidth = 0.8;
+      c.beginPath();
+      c.roundRect(-2.5, -8, 5, 14, 1.2);
+      c.fill();
+      c.stroke();
+      c.fillStyle = "#8d6e63";
+      c.fillRect(-2, -10, 4, 3);
+      c.restore();
+    }
+    c.restore();
+  } else if (it.id === "secretPaper") {
+    c.save();
+    c.translate(hx, hy);
+    const ang = Math.atan2(fy, fx);
+    c.rotate(ang + Math.PI * 0.5);
+    const pw = 56;
+    const ph = 38;
+    c.fillStyle = "#f2ebe0";
+    c.strokeStyle = "rgba(45, 35, 25, 0.4)";
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(3, -ph / 2);
+    c.lineTo(pw / 2 - 4, -ph / 2);
+    c.quadraticCurveTo(pw / 2, -ph / 2, pw / 2, -ph / 2 + 4);
+    c.lineTo(pw / 2, ph / 2 - 4);
+    c.quadraticCurveTo(pw / 2, ph / 2, pw / 2 - 4, ph / 2);
+    c.lineTo(-pw / 2 + 4, ph / 2);
+    c.quadraticCurveTo(-pw / 2, ph / 2, -pw / 2, ph / 2 - 4);
+    c.lineTo(-pw / 2, -ph / 2 + 4);
+    c.quadraticCurveTo(-pw / 2, -ph / 2, -pw / 2 + 4, -ph / 2);
+    c.closePath();
+    c.fill();
+    c.stroke();
+    c.fillStyle = "#1c1c30";
+    c.font = "bold 13px ui-monospace, monospace";
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    c.fillText(SECRET_PAPER_REVEAL_TEXT, 0, 0);
+    c.restore();
+  } else if (it.id === "redCrab") drawRedCrabModel(c, hx, hy, sc, fx < 0);
+  else if (it.id === "titanPrawn") drawTitanPrawnModel(c, hx, hy, sc, fx < 0);
+  else if (it.id === "giantCatShark") drawGiantCatSharkModel(c, hx, hy, sc, fx < 0);
+  else if (it.id === "hyperliosisPoolShark") drawHyperliosisPoolSharkModel(c, hx, hy, sc, fx < 0);
+  else if (it.id === "anglerShark") drawAnglerSharkModel(c, hx, hy, sc, fx < 0);
 
   if (it.gold) {
     drawGoldSparklesWorld(c, hx, hy, 22 * fishScaleFromWeight(it), performance.now() / 1000, it.uid);
@@ -4163,6 +5072,15 @@ function renderInventory() {
         if (inventory[i].foolsMut) drawFoolsMutationOverlay(g, 8, 8, 0.95);
         if (inventory[i].hackedMut) drawHackedGlitchOverlay(g, 40, 40, inventory[i].uid, performance.now());
         ic.title = `${inventory[i].name}${goldTag}${forestTag}${lightningTag}${foolsTag}${hackedTag} — ${inventory[i].weightG}g — $${fishTotalSellValue(inventory[i])}`;
+      } else if (inventory[i].id === "gunBullets") {
+        ic.title = `Bullets (${inventory[i].qty | 0})`;
+        g.save();
+        g.fillStyle = "rgba(0,0,0,0.75)";
+        g.font = "bold 10px sans-serif";
+        g.textAlign = "right";
+        g.textBaseline = "top";
+        g.fillText(String(inventory[i].qty | 0), 38, 4);
+        g.restore();
       } else {
         ic.title = inventory[i].name;
       }
@@ -4170,7 +5088,7 @@ function renderInventory() {
     }
     slot.addEventListener("click", () => {
       const it = inventory[i];
-      if (it && FISH_ITEM_IDS.has(it.id)) holdItemUid(it.uid);
+      if (it && (FISH_ITEM_IDS.has(it.id) || UID_MISC_ITEM_IDS.has(it.id) || it.id === "gunBullets")) holdItemUid(it.uid);
       else holdRod();
       selectedSlot = i;
       renderInventory();
@@ -4208,12 +5126,12 @@ function renderBackpackGrid() {
     slot.className = "bp-slot";
     if (favorites[i]) {
       const ic = document.createElement("canvas");
-      ic.width = 24;
-      ic.height = 24;
+      ic.width = 32;
+      ic.height = 32;
       const g = ic.getContext("2d");
-      drawItemIcon(g, favorites[i].id, 24, 24);
+      drawItemIcon(g, favorites[i].id, 32, 32);
       if (FISH_ITEM_IDS.has(favorites[i].id) && favorites[i].gold) {
-        drawGoldSparklesIcon(g, 24, 24, favorites[i].uid);
+        drawGoldSparklesIcon(g, 32, 32, favorites[i].uid);
       }
       if (FISH_ITEM_IDS.has(favorites[i].id)) {
         const goldTag = favorites[i].gold ? " [GOLD]" : "";
@@ -4221,10 +5139,10 @@ function renderBackpackGrid() {
         const lightningTag = favorites[i].lightningMut ? " [LIGHTNING]" : "";
         const foolsTag = favorites[i].foolsMut ? " [FOOL]" : "";
         const hackedTag = favorites[i].hackedMut ? " [HACKED×3]" : "";
-        if (favorites[i].forestMut) drawForestMutationOverlay(g, 16, 6, 0.85);
-        if (favorites[i].lightningMut) drawLightningMutationOverlay(g, 16, 18, 0.85);
-        if (favorites[i].foolsMut) drawFoolsMutationOverlay(g, 4, 4, 0.75);
-        if (favorites[i].hackedMut) drawHackedGlitchOverlay(g, 24, 24, favorites[i].uid, performance.now());
+        if (favorites[i].forestMut) drawForestMutationOverlay(g, 22, 8, 1.0);
+        if (favorites[i].lightningMut) drawLightningMutationOverlay(g, 22, 24, 1.0);
+        if (favorites[i].foolsMut) drawFoolsMutationOverlay(g, 6, 6, 0.85);
+        if (favorites[i].hackedMut) drawHackedGlitchOverlay(g, 32, 32, favorites[i].uid, performance.now());
         ic.title = `${favorites[i].name}${goldTag}${forestTag}${lightningTag}${foolsTag}${hackedTag} — ${favorites[i].weightG}g — $${fishTotalSellValue(favorites[i])}`;
       } else {
         ic.title = favorites[i].name;
@@ -4232,9 +5150,16 @@ function renderBackpackGrid() {
       slot.appendChild(ic);
     }
     slot.style.cursor = favorites[i] ? "pointer" : "default";
-    slot.addEventListener("click", () => {
+    slot.addEventListener("pointerdown", (e) => {
+      if (!e.isPrimary) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       const it = favorites[i];
-      if (it && FISH_ITEM_IDS.has(it.id)) holdItemUid(it.uid);
+      if (it && FISH_ITEM_IDS.has(it.id)) {
+        e.preventDefault();
+        holdItemUid(it.uid);
+        renderInventory();
+        renderBackpackGrid();
+      }
     });
     slot.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -4252,12 +5177,12 @@ function renderBackpackGrid() {
     slot.className = "bp-slot";
     if (backpack[i]) {
       const ic = document.createElement("canvas");
-      ic.width = 24;
-      ic.height = 24;
+      ic.width = 32;
+      ic.height = 32;
       const g = ic.getContext("2d");
-      drawItemIcon(g, backpack[i].id, 24, 24);
+      drawItemIcon(g, backpack[i].id, 32, 32);
       if (FISH_ITEM_IDS.has(backpack[i].id) && backpack[i].gold) {
-        drawGoldSparklesIcon(g, 24, 24, backpack[i].uid);
+        drawGoldSparklesIcon(g, 32, 32, backpack[i].uid);
       }
       if (FISH_ITEM_IDS.has(backpack[i].id)) {
         const goldTag = backpack[i].gold ? " [GOLD]" : "";
@@ -4265,20 +5190,36 @@ function renderBackpackGrid() {
         const lightningTag = backpack[i].lightningMut ? " [LIGHTNING]" : "";
         const foolsTag = backpack[i].foolsMut ? " [FOOL]" : "";
         const hackedTag = backpack[i].hackedMut ? " [HACKED×3]" : "";
-        if (backpack[i].forestMut) drawForestMutationOverlay(g, 16, 6, 0.85);
-        if (backpack[i].lightningMut) drawLightningMutationOverlay(g, 16, 18, 0.85);
-        if (backpack[i].foolsMut) drawFoolsMutationOverlay(g, 4, 4, 0.75);
-        if (backpack[i].hackedMut) drawHackedGlitchOverlay(g, 24, 24, backpack[i].uid, performance.now());
+        if (backpack[i].forestMut) drawForestMutationOverlay(g, 22, 8, 1.0);
+        if (backpack[i].lightningMut) drawLightningMutationOverlay(g, 22, 24, 1.0);
+        if (backpack[i].foolsMut) drawFoolsMutationOverlay(g, 6, 6, 0.85);
+        if (backpack[i].hackedMut) drawHackedGlitchOverlay(g, 32, 32, backpack[i].uid, performance.now());
         ic.title = `${backpack[i].name}${goldTag}${forestTag}${lightningTag}${foolsTag}${hackedTag} — ${backpack[i].weightG}g — $${fishTotalSellValue(backpack[i])}`;
+      } else if (backpack[i].id === "gunBullets") {
+        ic.title = `Bullets (${backpack[i].qty | 0})`;
+        g.save();
+        g.fillStyle = "rgba(0,0,0,0.75)";
+        g.font = "bold 9px sans-serif";
+        g.textAlign = "right";
+        g.textBaseline = "top";
+        g.fillText(String(backpack[i].qty | 0), 30, 2);
+        g.restore();
       } else {
         ic.title = backpack[i].name;
       }
       slot.appendChild(ic);
     }
     slot.style.cursor = backpack[i] ? "pointer" : "default";
-    slot.addEventListener("click", () => {
+    slot.addEventListener("pointerdown", (e) => {
+      if (!e.isPrimary) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       const it = backpack[i];
-      if (it && FISH_ITEM_IDS.has(it.id)) holdItemUid(it.uid);
+      if (it && (FISH_ITEM_IDS.has(it.id) || UID_MISC_ITEM_IDS.has(it.id) || it.id === "gunBullets")) {
+        e.preventDefault();
+        holdItemUid(it.uid);
+        renderInventory();
+        renderBackpackGrid();
+      }
     });
     slot.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -4315,9 +5256,12 @@ function closeAllUiPanels() {
   craftingPanel.classList.add("hidden");
   destroyPanel.classList.add("hidden");
   illusionEnchantPanel?.classList.add("hidden");
+  ghostCrafterPanel?.classList.add("hidden");
+  relicSellerPanel?.classList.add("hidden");
   bestiaryOpen = false;
   backpackPanel.classList.add("hidden");
   backpackOpen = false;
+  syncBackpackOpenBodyClass();
 }
 
 function renderIllusionEnchantPanel() {
@@ -4378,6 +5322,224 @@ function openIllusionEnchantPanel() {
   illusionEnchantPanel?.classList.remove("hidden");
 }
 
+function activateStormFromRelic() {
+  stormActive = true;
+  stormTimer = 0;
+  lightningFlashT = 0.28;
+}
+
+function countRelicsInInventoryBackpack(rid) {
+  let n = 0;
+  for (let i = 0; i < SLOT_COUNT; i++) if (inventory[i]?.id === rid) n++;
+  for (let i = 0; i < BACKPACK_SIZE; i++) if (backpack[i]?.id === rid) n++;
+  return n;
+}
+
+function consumeRelicsFromInventoryBackpack(rid, count) {
+  if (count <= 0) return true;
+  let need = count;
+  const removedUids = [];
+  for (let i = 0; i < SLOT_COUNT && need > 0; i++) {
+    const it = inventory[i];
+    if (it?.id === rid) {
+      removedUids.push(it.uid);
+      inventory[i] = null;
+      need--;
+    }
+  }
+  for (let i = 0; i < BACKPACK_SIZE && need > 0; i++) {
+    const it = backpack[i];
+    if (it?.id === rid) {
+      removedUids.push(it.uid);
+      backpack[i] = null;
+      need--;
+    }
+  }
+  if (held.kind === "item" && removedUids.includes(held.uid)) held = { kind: "rod", uid: null };
+  return need === 0;
+}
+
+function renderGhostCrafterPanel() {
+  if (!ghostCrafterRecipesEl) return;
+  ghostCrafterRecipesEl.innerHTML = "";
+
+  const makeRow = (title, desc, btnLabel, onCraft, disabledReason) => {
+    const row = document.createElement("div");
+    row.className = "recipe-row";
+    const icon = document.createElement("canvas");
+    icon.width = 48;
+    icon.height = 48;
+    const g = icon.getContext("2d");
+    drawItemIcon(g, title === "Storm relic" ? "stormRelic" : "titanRelic", 48, 48);
+    const meta = document.createElement("div");
+    meta.className = "recipe-meta";
+    meta.innerHTML = `<strong>${title}</strong><div class="recipe-req">${desc}</div>`;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = btnLabel;
+    if (disabledReason) {
+      btn.disabled = true;
+      btn.title = disabledReason;
+    }
+    btn.addEventListener("click", onCraft);
+    row.appendChild(icon);
+    row.appendChild(meta);
+    row.appendChild(btn);
+    ghostCrafterRecipesEl.appendChild(row);
+  };
+
+  const eel = countFishInInventoryBackpackOnly("electricalEel");
+  const rap = countFishInInventoryBackpackOnly("rapFish");
+  const stormBlock =
+    money < 300 || eel < 3 || !hasAnyInventorySpace()
+      ? !hasAnyInventorySpace()
+        ? "No free inventory or backpack slot."
+        : money < 300
+          ? "Not enough cash."
+          : "Need 3× electrical eel in hotbar or backpack (not favorites)."
+      : null;
+  makeRow(
+    "Storm relic",
+    `Cost: $300 + 3× electrical eel (you: ${eel}/3). Crafting starts a storm.`,
+    "Craft Storm relic",
+    () => {
+      if (money < 300 || eel < 3 || !hasAnyInventorySpace()) return;
+      const invS = inventory.slice();
+      const bpS = backpack.slice();
+      const moneyS = money;
+      const heldS = { ...held };
+      if (!consumeFishFromInventoryBackpackOnly("electricalEel", 3)) return;
+      money -= 300;
+      updateMoneyHud();
+      if (!addItem({ ...ITEMS.stormRelic, uid: newUid() })) {
+        for (let i = 0; i < SLOT_COUNT; i++) inventory[i] = invS[i];
+        for (let i = 0; i < BACKPACK_SIZE; i++) backpack[i] = bpS[i];
+        money = moneyS;
+        held = heldS;
+        updateMoneyHud();
+        renderInventory();
+        renderBackpackGrid();
+        renderGhostCrafterPanel();
+        return;
+      }
+      activateStormFromRelic();
+      saveGame();
+      renderGhostCrafterPanel();
+      renderInventory();
+      renderBackpackGrid();
+    },
+    stormBlock
+  );
+
+  const titanBlock =
+    money < 400 || rap < 5 || !hasAnyInventorySpace()
+      ? !hasAnyInventorySpace()
+        ? "No free inventory or backpack slot."
+        : money < 400
+          ? "Not enough cash."
+          : "Need 5× rap fish in hotbar or backpack (not favorites)."
+      : null;
+  makeRow(
+    "Titan relic",
+    `Cost: $400 + 5× rap fish (you: ${rap}/5). Its use will be revealed later.`,
+    "Craft Titan relic",
+    () => {
+      if (money < 400 || rap < 5 || !hasAnyInventorySpace()) return;
+      const invS = inventory.slice();
+      const bpS = backpack.slice();
+      const moneyS = money;
+      const heldS = { ...held };
+      if (!consumeFishFromInventoryBackpackOnly("rapFish", 5)) return;
+      money -= 400;
+      updateMoneyHud();
+      if (!addItem({ ...ITEMS.titanRelic, uid: newUid() })) {
+        for (let i = 0; i < SLOT_COUNT; i++) inventory[i] = invS[i];
+        for (let i = 0; i < BACKPACK_SIZE; i++) backpack[i] = bpS[i];
+        money = moneyS;
+        held = heldS;
+        updateMoneyHud();
+        renderInventory();
+        renderBackpackGrid();
+        renderGhostCrafterPanel();
+        return;
+      }
+      saveGame();
+      renderGhostCrafterPanel();
+      renderInventory();
+      renderBackpackGrid();
+    },
+    titanBlock
+  );
+}
+
+function openGhostCrafterPanel() {
+  closeAllUiPanels();
+  renderGhostCrafterPanel();
+  ghostCrafterPanel?.classList.remove("hidden");
+}
+
+function updateRelicSellerTotal() {
+  if (!relicSellStormQtyEl || !relicSellTitanQtyEl || !relicSellTotalEl) return;
+  const maxS = countRelicsInInventoryBackpack("stormRelic");
+  const maxT = countRelicsInInventoryBackpack("titanRelic");
+  let qs = Math.max(0, Math.floor(Number(relicSellStormQtyEl.value) || 0));
+  let qt = Math.max(0, Math.floor(Number(relicSellTitanQtyEl.value) || 0));
+  qs = Math.min(qs, maxS);
+  qt = Math.min(qt, maxT);
+  relicSellStormQtyEl.value = String(qs);
+  relicSellTitanQtyEl.value = String(qt);
+  const total = qs * RELIC_SELL_PRICE.stormRelic + qt * RELIC_SELL_PRICE.titanRelic;
+  relicSellTotalEl.textContent = String(total);
+}
+
+function openRelicSellerPanel() {
+  closeAllUiPanels();
+  if (relicSellerOwnedEl) {
+    const ns = countRelicsInInventoryBackpack("stormRelic");
+    const nt = countRelicsInInventoryBackpack("titanRelic");
+    relicSellerOwnedEl.textContent = `You have: ${ns}× Storm relic, ${nt}× Titan relic ($${RELIC_SELL_PRICE.stormRelic} / $${RELIC_SELL_PRICE.titanRelic} each).`;
+  }
+  if (relicSellStormQtyEl) {
+    relicSellStormQtyEl.max = String(countRelicsInInventoryBackpack("stormRelic"));
+    relicSellStormQtyEl.value = "0";
+  }
+  if (relicSellTitanQtyEl) {
+    relicSellTitanQtyEl.max = String(countRelicsInInventoryBackpack("titanRelic"));
+    relicSellTitanQtyEl.value = "0";
+  }
+  updateRelicSellerTotal();
+  relicSellerPanel?.classList.remove("hidden");
+}
+
+function tryRelicSell() {
+  if (!relicSellStormQtyEl || !relicSellTitanQtyEl) return;
+  const maxS = countRelicsInInventoryBackpack("stormRelic");
+  const maxT = countRelicsInInventoryBackpack("titanRelic");
+  let qs = Math.max(0, Math.floor(Number(relicSellStormQtyEl.value) || 0));
+  let qt = Math.max(0, Math.floor(Number(relicSellTitanQtyEl.value) || 0));
+  qs = Math.min(qs, maxS);
+  qt = Math.min(qt, maxT);
+  if (qs === 0 && qt === 0) return;
+  if (countRelicsInInventoryBackpack("stormRelic") < qs || countRelicsInInventoryBackpack("titanRelic") < qt) return;
+  const snapInv = inventory.slice();
+  const snapBp = backpack.slice();
+  const snapHeld = { ...held };
+  if (!consumeRelicsFromInventoryBackpack("stormRelic", qs)) return;
+  if (!consumeRelicsFromInventoryBackpack("titanRelic", qt)) {
+    for (let i = 0; i < SLOT_COUNT; i++) inventory[i] = snapInv[i];
+    for (let i = 0; i < BACKPACK_SIZE; i++) backpack[i] = snapBp[i];
+    held = snapHeld;
+    return;
+  }
+  const pay = qs * RELIC_SELL_PRICE.stormRelic + qt * RELIC_SELL_PRICE.titanRelic;
+  money += pay;
+  updateMoneyHud();
+  saveGame();
+  renderInventory();
+  renderBackpackGrid();
+  openRelicSellerPanel();
+}
+
 function openSellPanel() {
   closeAllUiPanels();
   updateSellBreakdown();
@@ -4392,11 +5554,26 @@ function countMetalSheets() {
   return n;
 }
 
+function countSecretPapers() {
+  let n = 0;
+  for (let i = 0; i < SLOT_COUNT; i++) if (inventory[i]?.id === "secretPaper") n++;
+  for (let i = 0; i < BACKPACK_SIZE; i++) if (backpack[i]?.id === "secretPaper") n++;
+  for (let i = 0; i < FAVORITES_SIZE; i++) if (favorites[i]?.id === "secretPaper") n++;
+  return n;
+}
+
+function countDestroyableJunk() {
+  return countMetalSheets() + countSecretPapers();
+}
+
 function openDestroyPanel() {
   closeAllUiPanels();
-  const n = countMetalSheets();
-  if (destroyCountEl) destroyCountEl.innerHTML = `Metal sheets: <strong>${n}</strong>`;
-  if (destroyAllBtn) destroyAllBtn.disabled = n <= 0;
+  const ms = countMetalSheets();
+  const sp = countSecretPapers();
+  if (destroyCountEl) {
+    destroyCountEl.innerHTML = `Metal sheets: <strong>${ms}</strong> · Paper: <strong>${sp}</strong>`;
+  }
+  if (destroyAllBtn) destroyAllBtn.disabled = countDestroyableJunk() <= 0;
   destroyPanel.classList.remove("hidden");
 }
 
@@ -4546,6 +5723,79 @@ function renderCrafting() {
     row.appendChild(meta);
     row.appendChild(btn);
     craftingContentEl.appendChild(row);
+
+    const gunRow = document.createElement("div");
+    gunRow.className = "recipe-row";
+    const gunIc = document.createElement("canvas");
+    gunIc.width = 48;
+    gunIc.height = 48;
+    drawItemIcon(gunIc.getContext("2d"), "gunRod", 48, 48);
+    const gunMeta = document.createElement("div");
+    gunMeta.className = "recipe-meta";
+    const gba = countFishInInventoryBackpackOnly("ghostBarracuda");
+    const ffly = countFishInInventoryBackpackOnly("flyingFish");
+    const herr = countFishInInventoryBackpackOnly("herring");
+    gunMeta.innerHTML = `<strong>Gun rod</strong><div class="recipe-req">Requires: $1000 (you $${money}), 4× Ghost barracuda (${gba}/4), 3× Flying fish (${ffly}/3), 1× Herring (${herr}/1). Uses 1 bullet per cast — craft bullets below.</div>`;
+    const gunBtn = document.createElement("button");
+    gunBtn.type = "button";
+    gunBtn.textContent = ownedRods.has("gunRod") ? "Owned" : "Craft";
+    gunBtn.disabled = ownedRods.has("gunRod");
+    gunBtn.addEventListener("click", () => {
+      if (ownedRods.has("gunRod")) return;
+      if (money < 1000) return;
+      if (countFishInInventoryBackpackOnly("ghostBarracuda") < 4) return;
+      if (countFishInInventoryBackpackOnly("flyingFish") < 3) return;
+      if (countFishInInventoryBackpackOnly("herring") < 1) return;
+      if (!consumeFishFromInventoryBackpackOnly("ghostBarracuda", 4)) return;
+      if (!consumeFishFromInventoryBackpackOnly("flyingFish", 3)) return;
+      if (!consumeFishFromInventoryBackpackOnly("herring", 1)) return;
+      money -= 1000;
+      updateMoneyHud();
+      ownedRods.add("gunRod");
+      equippedRodId = "gunRod";
+      holdRod();
+      renderRodSlot();
+      renderRods();
+      renderInventory();
+      renderBackpackGrid();
+      saveGame();
+      renderCrafting();
+    });
+    gunRow.appendChild(gunIc);
+    gunRow.appendChild(gunMeta);
+    gunRow.appendChild(gunBtn);
+    craftingContentEl.appendChild(gunRow);
+
+    const bulRow = document.createElement("div");
+    bulRow.className = "recipe-row";
+    const bulIc = document.createElement("canvas");
+    bulIc.width = 48;
+    bulIc.height = 48;
+    drawItemIcon(bulIc.getContext("2d"), "gunBullets", 48, 48);
+    const bulMeta = document.createElement("div");
+    bulMeta.className = "recipe-meta";
+    const msOne = countFishInInventoryBackpackOnly("metalSheet") >= 1;
+    bulMeta.innerHTML = `<strong>Gun bullets (×5)</strong><div class="recipe-req">Requires: 1× Metal sheet (${msOne ? "1/1" : "0/1"}), $100 (you $${money}). Stacks in inventory as <em>Bullets (count)</em>. Craft unlimited times.</div>`;
+    const bulBtn = document.createElement("button");
+    bulBtn.type = "button";
+    bulBtn.textContent = "Craft 5";
+    bulBtn.addEventListener("click", () => {
+      if (money < 100) return;
+      if (countFishInInventoryBackpackOnly("metalSheet") < 1) return;
+      if (!canAddGunBulletsMerge()) return;
+      if (!consumeFishFromInventoryBackpackOnly("metalSheet", 1)) return;
+      money -= 100;
+      updateMoneyHud();
+      if (!addOrMergeGunBullets(5)) return;
+      renderInventory();
+      renderBackpackGrid();
+      saveGame();
+      renderCrafting();
+    });
+    bulRow.appendChild(bulIc);
+    bulRow.appendChild(bulMeta);
+    bulRow.appendChild(bulBtn);
+    craftingContentEl.appendChild(bulRow);
     return;
   }
 
@@ -4624,7 +5874,7 @@ function renderRods() {
   list.style.flexDirection = "column";
   list.style.gap = "10px";
 
-  const rodIds = ["beginnerRod", "advancedRod", "metalRod", "forestRod", "speedRod", "sharkRod", "rod67", "testingRod", "liarRod"];
+  const rodIds = ["beginnerRod", "advancedRod", "metalRod", "forestRod", "speedRod", "sharkRod", "gunRod", "rod67", "testingRod", "liarRod"];
   for (const rid of rodIds) {
     const row = document.createElement("div");
     row.style.display = "flex";
@@ -4702,10 +5952,43 @@ function destroyAllMetalSheets() {
   return n;
 }
 
+function destroyAllSecretPapers() {
+  let n = 0;
+  for (let i = 0; i < SLOT_COUNT; i++) {
+    if (inventory[i]?.id === "secretPaper") {
+      if (held.kind === "item" && held.uid === inventory[i].uid) held = { kind: "rod", uid: null };
+      inventory[i] = null;
+      n++;
+    }
+  }
+  for (let i = 0; i < BACKPACK_SIZE; i++) {
+    if (backpack[i]?.id === "secretPaper") {
+      if (held.kind === "item" && held.uid === backpack[i].uid) held = { kind: "rod", uid: null };
+      backpack[i] = null;
+      n++;
+    }
+  }
+  for (let i = 0; i < FAVORITES_SIZE; i++) {
+    if (favorites[i]?.id === "secretPaper") {
+      if (held.kind === "item" && held.uid === favorites[i].uid) held = { kind: "rod", uid: null };
+      favorites[i] = null;
+      n++;
+    }
+  }
+  return n;
+}
+
+function destroyAllJunkAtStand() {
+  destroyAllMetalSheets();
+  destroyAllSecretPapers();
+}
+
 destroyAllBtn?.addEventListener("click", () => {
-  const removed = destroyAllMetalSheets();
-  if (destroyCountEl) destroyCountEl.innerHTML = `Metal sheets: <strong>${countMetalSheets()}</strong>`;
-  if (destroyAllBtn) destroyAllBtn.disabled = countMetalSheets() <= 0;
+  destroyAllJunkAtStand();
+  if (destroyCountEl) {
+    destroyCountEl.innerHTML = `Metal sheets: <strong>${countMetalSheets()}</strong> · Paper: <strong>${countSecretPapers()}</strong>`;
+  }
+  if (destroyAllBtn) destroyAllBtn.disabled = countDestroyableJunk() <= 0;
   renderInventory();
   renderBackpackGrid();
   saveGame();
@@ -4719,6 +6002,11 @@ document.getElementById("bestiary-close-btn").addEventListener("click", closeAll
 document.getElementById("rods-close-btn").addEventListener("click", closeAllUiPanels);
 craftingCloseBtn?.addEventListener("click", closeAllUiPanels);
 illusionEnchantCloseBtn?.addEventListener("click", closeAllUiPanels);
+ghostCrafterCloseBtn?.addEventListener("click", closeAllUiPanels);
+relicSellerCloseBtn?.addEventListener("click", closeAllUiPanels);
+relicSellBtn?.addEventListener("click", tryRelicSell);
+relicSellStormQtyEl?.addEventListener("input", updateRelicSellerTotal);
+relicSellTitanQtyEl?.addEventListener("input", updateRelicSellerTotal);
 
 document.querySelectorAll("[data-buy]").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -4795,6 +6083,7 @@ window.addEventListener("keydown", (e) => {
     }
   }
   if (e.code === "KeyE" && gameState === "playing" && fishingState === "idle") {
+    if (!settingsPanel.classList.contains("hidden")) return;
     const is = islandAtPoint(player.x, player.y);
     if (!is) return;
     const ps = standPosSell(is);
@@ -4823,6 +6112,7 @@ window.addEventListener("keydown", (e) => {
     bestiaryOpen = false;
     backpackOpen = !backpackOpen;
     backpackPanel.classList.toggle("hidden", !backpackOpen);
+    syncBackpackOpenBodyClass();
     if (backpackOpen) renderBackpackGrid();
   }
   if (e.code === "Digit1") selectedSlot = 0;
@@ -4830,9 +6120,9 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "Digit3") selectedSlot = 2;
   if (e.code === "Digit4") selectedSlot = 3;
   if (e.code === "Digit5") selectedSlot = 4;
-  if (["Digit1", "Digit2", "Digit3", "Digit4", "Digit5"].includes(e.code)) {
+    if (["Digit1", "Digit2", "Digit3", "Digit4", "Digit5"].includes(e.code)) {
     const hot = inventory[selectedSlot];
-    if (hot && FISH_ITEM_IDS.has(hot.id)) holdItemUid(hot.uid);
+    if (hot && (FISH_ITEM_IDS.has(hot.id) || UID_MISC_ITEM_IDS.has(hot.id) || hot.id === "gunBullets")) holdItemUid(hot.uid);
     else holdRod();
     renderInventory();
   }
@@ -4873,6 +6163,14 @@ window.addEventListener("keyup", (e) => {
         openIllusionEnchantPanel();
         return;
       }
+      if (isNearGhostCrafter(player.x, player.y)) {
+        openGhostCrafterPanel();
+        return;
+      }
+      if (isNearRelicSeller(player.x, player.y)) {
+        openRelicSellerPanel();
+        return;
+      }
       // NPC interaction takes priority over casting (Meme Crafter on April Fools island first).
       if (isNearMemeCrafter(player.x, player.y)) {
         openMemeCraftingPanel();
@@ -4889,6 +6187,12 @@ let mouseDown = false;
 let spacePress = { active: false, downAt: 0 };
 window.addEventListener("mousedown", (e) => {
   if (e.button === 0) mouseDown = true;
+});
+canvas.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  if (codeTypingLock) return;
+  tryUseStormRelicAtClick();
+  tryUseTitanRelicAtClick(e.clientX, e.clientY);
 });
 window.addEventListener("mouseup", (e) => {
   if (e.button === 0) mouseDown = false;
@@ -4912,18 +6216,23 @@ function tryStartFishing() {
   castPoint.y = cp.y;
   const cast = getCastFishingZone(castPoint.x, castPoint.y);
   if (!cast) return;
+  if (equippedRodId === "gunRod" && countGunBulletsTotal() < 1) return;
   lastFishingIslandKind = cast.island?.kind ?? null;
   const homeIsland = islandAtPoint(player.x, player.y);
   const onGarbageIsland = homeIsland?.kind === "garbage";
+  const onTitanInfected = isTitanInfectedWaterAt(castPoint.x, castPoint.y);
 
   // Garbage rod only fishes garbage at the Garbage island.
   if (equippedRodId === "garbageRod") {
     if (cast.zone !== "ocean" || !onGarbageIsland) return;
-    pendingFishId = "metalSheet";
+    pendingFishId = Math.random() < 1 / 8 ? "plasticBottle" : "metalSheet";
     pendingTropical = null;
     pendingRodDrop = null;
-  } else
-  if (cast.zone === "ocean" && cast.island.kind === "tropico") {
+  } else if (onTitanInfected) {
+    pendingFishId = rollTitanInfectionFish();
+    pendingTropical = null;
+    pendingRodDrop = null;
+  } else if (cast.zone === "ocean" && cast.island.kind === "tropico") {
     // Tropico ocean loot table
     if (Math.random() < 1 / 50) pendingFishId = "barracuda";
     else if (Math.random() < 1 / 10) pendingFishId = "forestTurtle";
@@ -4965,7 +6274,8 @@ function tryStartFishing() {
       pendingTropical = null;
       pendingRodDrop = null;
     } else if (cast.zone === "ocean" && (cast.island.kind === "garbage" || onGarbageIsland)) {
-      pendingFishId = Math.random() < 1 / 5 ? "metalSheet" : "garbageFish";
+      pendingFishId =
+        Math.random() < 1 / 8 ? "plasticBottle" : Math.random() < 1 / 5 ? "metalSheet" : "garbageFish";
       pendingTropical = null;
       if (!ownsGarbageRod()) {
         // 1/10 base chance with 20-attempt pity (guarantee on 20th eligible attempt)
@@ -4983,6 +6293,17 @@ function tryStartFishing() {
       pendingTropical = null;
       pendingRodDrop = null;
     }
+  }
+
+  if (equippedRodId === "gunRod") {
+    if (!consumeOneGunBullet()) return;
+    minigame = {
+      fishId: pendingFishId,
+      tropicalItemId: pendingTropical?.itemId ?? null,
+      tropicalColor: pendingTropical?.color ?? null,
+    };
+    endFishingSuccess();
+    return;
   }
 
   fishingState = "hooking";
@@ -5046,7 +6367,8 @@ function redrawFishMinigame() {
   if (!minnowMinigameCanvas || !minigame) return;
   const c = minnowMinigameCanvas.getContext("2d");
   const id = minigame.fishId;
-  const anglerDecoy = id === "anglerfish" && (minigame.anglerDecoyT || 0) > 0;
+  const anglerDecoy =
+    (id === "anglerfish" || id === "anglerShark") && (minigame.anglerDecoyT || 0) > 0;
   const ghostHide = id === "ghostFish" && (minigame.ghostInvisT || 0) > 0;
 
   if (anglerDecoy) {
@@ -5112,9 +6434,15 @@ function redrawFishMinigame() {
     drawBarracudaModel(c, w / 2, h / 2, sc, false);
     c.restore();
   } else if (id === "anglerfish") drawAnglerfishModel(c, w / 2, h / 2, sc, false);
+  else if (id === "redCrab") drawRedCrabModel(c, w / 2, h / 2, sc, false);
+  else if (id === "titanPrawn") drawTitanPrawnModel(c, w / 2, h / 2, sc, false);
+  else if (id === "giantCatShark") drawGiantCatSharkModel(c, w / 2, h / 2, sc, false);
+  else if (id === "hyperliosisPoolShark") drawHyperliosisPoolSharkModel(c, w / 2, h / 2, sc, false);
+  else if (id === "anglerShark") drawAnglerSharkModel(c, w / 2, h / 2, sc, false);
   else if (id === "herring") drawHerringModel(c, w / 2, h / 2, sc, false);
   else if (id === "metalSheet") drawMetalSheetModel(c, w / 2, h / 2, sc, false);
   else if (id === "garbageFish") drawGarbageFishModel(c, w / 2, h / 2, sc, false);
+  else if (id === "plasticBottle") drawPlasticBottleModel(c, w / 2, h / 2, sc, false);
   else if (id === "tropical" || id === "tropicalPurple") drawTropicalModel(c, w / 2, h / 2, sc, false, minigame?.tropicalColor || "orange");
   else if (id === "forestFish") drawForestFishModel(c, w / 2, h / 2, sc, false);
   else drawMinnowModel(c, w / 2, h / 2, sc, false);
@@ -5175,19 +6503,31 @@ function endFishingSuccess() {
                                     ? ITEMS.ghostBarracuda
                                     : fid === "anglerfish"
                                       ? ITEMS.anglerfish
-                                      : fid === "herring"
-                                        ? ITEMS.herring
-                                        : fid === "metalSheet"
-                                          ? ITEMS.metalSheet
-                                          : fid === "garbageFish"
-                                            ? ITEMS.garbageFish
-                                            : fid === "tropicalPurple"
-                                              ? ITEMS.tropicalPurple
-                                              : fid === "tropical"
-                                                ? ITEMS[minigame?.tropicalItemId || "tropicalOrange"]
-                                                : fid === "forestFish"
-                                                  ? ITEMS.forestFish
-                                                  : ITEMS.minnow;
+                                      : fid === "redCrab"
+                                        ? ITEMS.redCrab
+                                        : fid === "titanPrawn"
+                                          ? ITEMS.titanPrawn
+                                          : fid === "giantCatShark"
+                                            ? ITEMS.giantCatShark
+                                            : fid === "hyperliosisPoolShark"
+                                              ? ITEMS.hyperliosisPoolShark
+                                              : fid === "anglerShark"
+                                                ? ITEMS.anglerShark
+                                                : fid === "herring"
+                                                  ? ITEMS.herring
+                                                  : fid === "metalSheet"
+                                                    ? ITEMS.metalSheet
+                                                    : fid === "garbageFish"
+                                                      ? ITEMS.garbageFish
+                                                      : fid === "plasticBottle"
+                                                        ? ITEMS.plasticBottle
+                                                      : fid === "tropicalPurple"
+                                                        ? ITEMS.tropicalPurple
+                                                        : fid === "tropical"
+                                                          ? ITEMS[minigame?.tropicalItemId || "tropicalOrange"]
+                                                          : fid === "forestFish"
+                                                            ? ITEMS.forestFish
+                                                            : ITEMS.minnow;
   const fishId = item.id;
   const newFish = {
     ...item,
@@ -5313,7 +6653,7 @@ function updateMinigame(dt) {
       }
     }
   }
-  if (minigame.fishId === "anglerfish") {
+  if (minigame.fishId === "anglerfish" || minigame.fishId === "anglerShark") {
     minigame.anglerDecoyT = Math.max(0, (minigame.anglerDecoyT || 0) - dt);
     minigame.anglerDecoyAcc = (minigame.anglerDecoyAcc || 0) + dt;
     while (minigame.anglerDecoyAcc >= 1) {
@@ -5680,6 +7020,7 @@ function frame(now) {
   last = now;
 
   if (gameState === "playing") {
+    pruneTitanInfections();
     // Day/Night cycle (toggles every 10 minutes)
     phaseTimer += dt;
     if (phaseTimer >= DAY_NIGHT_PHASE_SECONDS) {
@@ -5804,6 +7145,10 @@ function drawWorld() {
       const cy = wy + TILE_SIZE * 0.5;
       const type = getTileTypeAt(cx, cy);
       drawTileTexture(wx, wy, type, tx, ty);
+      if (isWaterTileType(type) && isTitanInfectedWaterAt(cx, cy)) {
+        ctx.fillStyle = "rgba(200, 30, 45, 0.52)";
+        ctx.fillRect(wx, wy, TILE_SIZE, TILE_SIZE);
+      }
       if (type === TILE.TREE) {
         drawTreeSprite(wx, wy, tx, ty);
       }
@@ -5912,6 +7257,80 @@ function drawWorld() {
     ctx.restore();
   }
 
+  const ghostWorld = ghostCrafterPos();
+  if (ghostWorld) {
+    ctx.save();
+    ctx.translate(ghostWorld.x, ghostWorld.y);
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = "#4dd0e1";
+    ctx.strokeStyle = "rgba(0,80,100,0.45)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-12, -18, 24, 36, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#e0f7fa";
+    ctx.font = "bold 10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("⚡", 0, -22);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(-6, -8, 4, 5);
+    ctx.fillRect(2, -8, 4, 5);
+    ctx.fillStyle = "#111";
+    ctx.fillRect(-4.5, -6, 2, 2.5);
+    ctx.fillRect(3.5, -6, 2, 2.5);
+    ctx.strokeStyle = "rgba(255,255,255,0.45)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-5, 2);
+    ctx.quadraticCurveTo(0, 6, 5, 2);
+    ctx.stroke();
+    if (isNearGhostCrafter(player.x, player.y)) {
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(220,248,255,0.98)";
+      ctx.fillText("Space: Ghost Crafter", 0, -32);
+    }
+    ctx.restore();
+  }
+
+  const relicSellWorld = relicSellerPos();
+  if (relicSellWorld) {
+    ctx.save();
+    ctx.translate(relicSellWorld.x, relicSellWorld.y);
+    ctx.fillStyle = "#5d4037";
+    ctx.strokeStyle = "rgba(0,0,0,0.4)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-12, -18, 24, 36, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#ffc107";
+    ctx.font = "bold 11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("◆", 0, -22);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(-6, -8, 4, 5);
+    ctx.fillRect(2, -8, 4, 5);
+    ctx.fillStyle = "#111";
+    ctx.fillRect(-4.5, -6, 2, 2.5);
+    ctx.fillRect(3.5, -6, 2, 2.5);
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-5, 2);
+    ctx.quadraticCurveTo(0, 6, 5, 2);
+    ctx.stroke();
+    if (isNearRelicSeller(player.x, player.y)) {
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(255,236,200,0.98)";
+      ctx.fillText("Space: Relic Seller", 0, -32);
+    }
+    ctx.restore();
+  }
+
   const memeNpc = memeCrafterPos();
   if (memeNpc) {
     ctx.save();
@@ -5996,19 +7415,21 @@ function drawWorld() {
           ? "liar"
           : equippedRodId === "garbageRod"
             ? "garbage"
-            : equippedRodId === "rod67"
-              ? "rod67"
-              : equippedRodId === "sharkRod"
-                ? "shark"
-                : equippedRodId === "speedRod"
-                  ? "speed"
-                  : equippedRodId === "forestRod"
-                    ? "forest"
-                    : equippedRodId === "metalRod"
-                      ? "metal"
-                      : equippedRodId === "advancedRod"
-                        ? "advanced"
-                        : "beginner";
+            : equippedRodId === "gunRod"
+              ? "gun"
+              : equippedRodId === "rod67"
+                ? "rod67"
+                : equippedRodId === "sharkRod"
+                  ? "shark"
+                  : equippedRodId === "speedRod"
+                    ? "speed"
+                    : equippedRodId === "forestRod"
+                      ? "forest"
+                      : equippedRodId === "metalRod"
+                        ? "metal"
+                        : equippedRodId === "advancedRod"
+                          ? "advanced"
+                          : "beginner";
     drawCastLineAndBobber();
     drawPlayerSquare(player.x, player.y, player.half, player.facing.x, player.facing.y);
     if (held.kind === "rod") drawEquippedRodToward(castPoint.x, castPoint.y, v);
@@ -6023,19 +7444,21 @@ function drawWorld() {
             ? "liar"
             : equippedRodId === "garbageRod"
               ? "garbage"
-              : equippedRodId === "rod67"
-                ? "rod67"
-                : equippedRodId === "sharkRod"
-                  ? "shark"
-                  : equippedRodId === "speedRod"
-                    ? "speed"
-                    : equippedRodId === "forestRod"
-                      ? "forest"
-                      : equippedRodId === "metalRod"
-                        ? "metal"
-                        : equippedRodId === "advancedRod"
-                          ? "advanced"
-                          : "beginner";
+              : equippedRodId === "gunRod"
+                ? "gun"
+                : equippedRodId === "rod67"
+                  ? "rod67"
+                  : equippedRodId === "sharkRod"
+                    ? "shark"
+                    : equippedRodId === "speedRod"
+                      ? "speed"
+                      : equippedRodId === "forestRod"
+                        ? "forest"
+                        : equippedRodId === "metalRod"
+                          ? "metal"
+                          : equippedRodId === "advancedRod"
+                            ? "advanced"
+                            : "beginner";
       const fx = player.facing.x;
       const fy = player.facing.y;
       const len = Math.hypot(fx, fy) || 1;
