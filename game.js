@@ -182,6 +182,42 @@ function redeemCodeExact(code) {
     saveGame();
     return { ok: true, msg: "Previous account restored." };
   }
+  if (code === "undo-op") {
+    if (!redeemedCodes.has("tyautoclicker")) return { ok: false, msg: "tyautoclicker was not redeemed." };
+    const isTyautoclickerBarracuda = (it) =>
+      it &&
+      it.id === "barracuda" &&
+      it.weightG === 300 &&
+      it.gold &&
+      it.forestMut &&
+      it.lightningMut &&
+      it.foolsMut &&
+      it.hackedMut;
+    let need = 10;
+    const tryRemove = (arr) => {
+      for (let i = 0; i < arr.length && need > 0; i++) {
+        if (isTyautoclickerBarracuda(arr[i])) {
+          if (held.kind === "item" && held.uid === arr[i].uid) held = { kind: "rod", uid: null };
+          arr[i] = null;
+          need--;
+        }
+      }
+    };
+    tryRemove(inventory);
+    tryRemove(backpack);
+    tryRemove(favorites);
+    if (need > 0) {
+      return {
+        ok: false,
+        msg: "Could not find all 10 tyautoclicker barracuda (sold, destroyed, or changed).",
+      };
+    }
+    redeemedCodes.delete("tyautoclicker");
+    renderInventory();
+    renderBackpackGrid();
+    saveGame();
+    return { ok: true, msg: "Removed 10 tyautoclicker barracuda; you can redeem tyautoclicker again." };
+  }
 
   if (redeemedCodes.has(code)) return { ok: false, msg: "Code already redeemed." };
 
@@ -228,6 +264,31 @@ function redeemCodeExact(code) {
     renderBackpackGrid();
     saveGame();
     return { ok: true, msg: "Redeemed." };
+  }
+  if (code === "tyautoclicker") {
+    let free = 0;
+    for (let i = 0; i < SLOT_COUNT; i++) if (!inventory[i]) free++;
+    for (let i = 0; i < BACKPACK_SIZE; i++) if (!backpack[i]) free++;
+    if (free < 10) return { ok: false, msg: "Need 10 empty slots (hotbar or backpack)." };
+    for (let n = 0; n < 10; n++) {
+      const fish = {
+        ...ITEMS.barracuda,
+        uid: newUid(),
+        weightG: 300,
+        gold: true,
+        forestMut: true,
+        lightningMut: true,
+        foolsMut: true,
+        hackedMut: true,
+      };
+      if (!addItem(fish)) return { ok: false, msg: "Inventory full." };
+    }
+    redeemedCodes.add(code);
+    markCaught("barracuda");
+    renderInventory();
+    renderBackpackGrid();
+    saveGame();
+    return { ok: true, msg: "Redeemed: 10× max-mutation barracuda (300g each)." };
   }
   if (code === "checkifluscaisinthegame") {
     const lusca = {
